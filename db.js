@@ -55,12 +55,8 @@ export async function put(store, value) {
     const objectStore =
       tx.objectStore(store);
 
-    // Remove Vue proxies / reactive wrappers
-    const safeValue =
-      structuredClone(value);
-
     const request =
-      objectStore.put(safeValue);
+      objectStore.put(value);
 
     request.onsuccess =
       () => resolve();
