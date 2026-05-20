@@ -1,0 +1,37 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: #111;
+  color: #eee;
+}
+
+header {
+  background: #1f1f1f;
+  padding: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+header a {
+  color: #4fc3f7;
+  text-decoration: none;
+}
+
+.container {
+  padding: 20px;
+}
+
+.card {
+  background: #1c1c1c;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+}
