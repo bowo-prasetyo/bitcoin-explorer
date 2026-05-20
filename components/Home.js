@@ -14,91 +14,205 @@ import {
 export default {
 
   template: `
-  <div class="container">
+<div class="container">
 
-    <div class="card">
-      <h2>Bitcoin Explorer</h2>
+  <!-- SEARCH -->
+  <div class="card">
 
-      <input
-        v-model="query"
-        placeholder="Block hash / txid / address"
-      >
+    <h2>
+      Bitcoin Explorer
+    </h2>
 
-      <button @click="search">
-        Search
-      </button>
+    <input
+      v-model="query"
+      placeholder="
+        Block hash / txid / address
+      "
+    >
+
+    <button @click="search">
+      Search
+    </button>
+
+  </div>
+
+  <!-- BLOCKCHAIN TIP -->
+  <div class="card">
+
+    <h2>
+      Blockchain Tip
+    </h2>
+
+    <div>
+      Height:
+      {{ latest.height }}
     </div>
 
-    <div class="grid">
+    <div class="hash">
+      {{ latest.id }}
+    </div>
 
-      <div class="card">
-        <h3>Latest Block</h3>
-
-        <div v-if="latest.height">
-
-          <div>
-            Height:
-            {{ latest.height }}
-          </div>
-
-          <div class="hash">
-            {{ latest.id }}
-          </div>
-
-          <div>
-            Tx Count:
-            {{ latest.tx_count }}
-          </div>
-
-        </div>
-
-        <div v-else>
-          Loading latest block...
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Mempool</h3>
-
-        <div v-if="mempool.count !== undefined">
-
-          <div>
-            {{ mempool.count }} txs
-          </div>
-
-          <div>
-            {{ mempool.vsize }} vbytes
-          </div>
-
-          <div>
-            {{ mempool.total_fee }} sats
-          </div>
-
-        </div>
-
-        <div v-else>
-          Loading mempool...
-        </div>
-      </div>
-
+    <div>
+      Timestamp:
+      {{ latest.timestamp }}
     </div>
 
   </div>
-  `,
+
+  <!-- RECENT BLOCKS -->
+  <div class="card">
+
+    <h2>
+      Recent Blocks
+    </h2>
+
+    <table>
+
+      <thead>
+
+        <tr>
+          <th>Height</th>
+          <th>TX</th>
+          <th>Size</th>
+          <th>Weight</th>
+        </tr>
+
+      </thead>
+
+      <tbody>
+
+        <tr
+          v-for="
+            block in recentBlocks
+          "
+          :key="block.id"
+        >
+
+          <td>
+            {{ block.height }}
+          </td>
+
+          <td>
+            {{ block.tx_count }}
+          </td>
+
+          <td>
+            {{ block.size }}
+          </td>
+
+          <td>
+            {{ block.weight }}
+          </td>
+
+        </tr>
+
+      </tbody>
+
+    </table>
+
+  </div>
+
+  <!-- MEMPOOL -->
+  <div class="card">
+
+    <h2>
+      Mempool State
+    </h2>
+
+    <div>
+      Pending TX:
+      {{ mempool.count }}
+    </div>
+
+    <div>
+      Queue VSize:
+      {{ mempool.vsize }}
+    </div>
+
+    <div>
+      Total Fees:
+      {{ mempool.total_fee }}
+    </div>
+
+  </div>
+
+  <!-- FEE ESTIMATES -->
+  <div class="card">
+
+    <h2>
+      Fee Estimates
+    </h2>
+
+    <table>
+
+      <thead>
+
+        <tr>
+          <th>Target</th>
+          <th>sat/vB</th>
+        </tr>
+
+      </thead>
+
+      <tbody>
+
+        <tr
+          v-for="
+            (fee, target)
+            in fees
+          "
+          :key="target"
+        >
+
+          <td>
+            {{ target }} blocks
+          </td>
+
+          <td>
+            {{ fee }}
+          </td>
+
+        </tr>
+
+      </tbody>
+
+    </table>
+
+  </div>
+
+  <!-- HISTOGRAM -->
+  <div class="card">
+
+    <h2>
+      Fee Histogram
+    </h2>
+
+    <canvas
+      id="histogramChart"
+    ></canvas>
+
+  </div>
+
+</div>
+`,
 
   data() {
 
-    return {
+  return {
 
-      latest: {},
-      mempool: {},
-      query: '',
+    query: '',
 
-      latestRefresher: null,
-      mempoolRefresher: null
+    latest: {},
 
-    };
-  },
+    recentBlocks: [],
+
+    mempool: {},
+
+    fees: {},
+
+    histogramChart: null
+  };
+},
 
   methods: {
 
@@ -159,7 +273,46 @@ export default {
     async loadMempool() {
 
       return await getMempool();
-    }
+    },
+
+    createHistogram() {
+
+  const ctx =
+    document
+      .getElementById(
+        'histogramChart'
+      );
+
+  this.histogramChart =
+    Vue.markRaw(
+
+      new Chart(ctx, {
+
+        type: 'bar',
+
+        data: {
+
+          labels: [],
+
+          datasets: [{
+
+            label:
+              'Queued vBytes',
+
+            data: []
+
+          }]
+        },
+
+        options: {
+
+          responsive: true,
+
+          animation: false
+        }
+      })
+    );
+}
   },
 
   mounted() {
