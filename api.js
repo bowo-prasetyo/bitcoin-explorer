@@ -298,6 +298,13 @@ export async function getMempool() {
   return await r.json();
 }
 
+export async function getRecentBlocks() {
+
+  return apiFetch(
+    '/blocks'
+  );
+}
+
 // =====================================================
 // NODE STATUS API
 // =====================================================
