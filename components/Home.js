@@ -312,7 +312,39 @@ export default {
         }
       })
     );
+},
+
+    updateHistogram() {
+
+  if (
+    !this.histogramChart
+  ) {
+    return;
+  }
+
+  const histogram =
+    this.mempool
+      .fee_histogram || [];
+
+  this.histogramChart
+    .data.labels =
+
+      histogram.map(
+        h => h[0]
+      );
+
+  this.histogramChart
+    .data.datasets[0]
+    .data =
+
+      histogram.map(
+        h => h[1]
+      );
+
+  this.histogramChart
+    .update();
 }
+    
   },
 
   mounted() {
