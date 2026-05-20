@@ -305,6 +305,13 @@ export async function getRecentBlocks() {
   );
 }
 
+export async function getFeeEstimates() {
+
+  return apiFetch(
+    '/fee-estimates'
+  );
+}
+
 // =====================================================
 // NODE STATUS API
 // =====================================================
