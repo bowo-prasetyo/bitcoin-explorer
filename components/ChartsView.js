@@ -9,6 +9,8 @@ import {
   put
 } from '../db.js';
 
+const { markRaw } = Vue;
+
 export default {
 
   template: `
@@ -135,39 +137,41 @@ export default {
     // ===============================================
 
     createChart() {
-
+    
       const ctx =
         document
           .getElementById(
             'feeChart'
           );
-
-      this.chart =
+    
+      this.chart = markRaw(
+    
         new Chart(ctx, {
-
+    
           type: 'line',
-
+    
           data: {
-
+    
             labels: [],
-
+    
             datasets: [{
-
+    
               label:
                 'Mempool TX Count',
-
+    
               data: []
-
+    
             }]
           },
-
+    
           options: {
-
+    
             responsive: true,
-
+    
             animation: false
           }
-        });
+        })
+      );
     }
   },
 
