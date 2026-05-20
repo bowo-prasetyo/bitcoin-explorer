@@ -343,7 +343,17 @@ export default {
 
   this.histogramChart
     .update();
-}
+},
+
+    async loadRecentBlocks() {
+
+  return await getRecentBlocks();
+},
+
+async loadFeeEstimates() {
+
+  return await getFeeEstimates();
+}    
     
   },
 
