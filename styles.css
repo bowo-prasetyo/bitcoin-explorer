@@ -34,4 +34,23 @@ input {
   padding: 10px;
   border-radius: 6px;
   border: none;
+  margin-bottom: 10px;
+}
+
+button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.hash {
+  word-break: break-all;
+  font-family: monospace;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
 }
