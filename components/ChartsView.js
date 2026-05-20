@@ -67,8 +67,22 @@ export default {
       };
 
       // Keep rolling history
-      this.history.push(point);
-
+      this.history.push({
+      
+        timestamp:
+          point.timestamp,
+      
+        count:
+          point.count,
+      
+        vsize:
+          point.vsize,
+      
+        total_fee:
+          point.total_fee
+      
+      });
+            
       // Limit chart size
       if (this.history.length > 50) {
 
