@@ -5,6 +5,7 @@ let db;
 
 export async function initDB() {
   return new Promise((resolve, reject) => {
+    
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = e => {
@@ -21,6 +22,15 @@ export async function initDB() {
       if (!db.objectStoreNames.contains('headers')) {
         db.createObjectStore('headers', { keyPath: 'height' });
       }
+
+      if (!db.objectStoreNames.contains('cache')) {
+      
+        db.createObjectStore(
+          'cache',
+          { keyPath: 'id' }
+        );
+      }
+      
     };
 
     request.onsuccess = e => {
