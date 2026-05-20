@@ -1,5 +1,5 @@
 const DB_NAME = 'btc-explorer';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let db;
 
