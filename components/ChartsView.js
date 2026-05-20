@@ -96,7 +96,10 @@ export default {
 
         timestamp: Date.now(),
 
-        data: this.history
+        data: JSON.parse(
+          JSON.stringify(this.history)
+        )
+        
       });
 
       return point;
