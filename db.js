@@ -42,12 +42,31 @@ export async function initDB() {
   });
 }
 
-export async function put(storeName, value) {
+export async function put(store, value) {
+
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    tx.objectStore(storeName).put(value);
-    tx.oncomplete = resolve;
-    tx.onerror = reject;
+
+    const tx =
+      db.transaction(
+        store,
+        'readwrite'
+      );
+
+    const objectStore =
+      tx.objectStore(store);
+
+    // Remove Vue proxies / reactive wrappers
+    const safeValue =
+      structuredClone(value);
+
+    const request =
+      objectStore.put(safeValue);
+
+    request.onsuccess =
+      () => resolve();
+
+    request.onerror =
+      err => reject(err);
   });
 }
 
