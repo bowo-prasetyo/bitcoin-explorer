@@ -432,6 +432,64 @@ this.updateHistogram();
       });
 
     this.mempoolRefresher.start();
+
+    this.blocksRefresher =
+  createSmartRefresher({
+
+    cacheKey:
+      'recent-blocks',
+
+    cacheTTL:
+      15000,
+
+    fetchFn:
+      this.loadRecentBlocks,
+
+    onUpdate:
+      (data, cached) => {
+
+        this.recentBlocks =
+          data;
+
+        console.log(
+
+          cached
+            ? 'Recent blocks cache'
+            : 'Recent blocks network'
+        );
+      }
+  });
+
+this.blocksRefresher.start();
+
+    this.feesRefresher =
+  createSmartRefresher({
+
+    cacheKey:
+      'fee-estimates',
+
+    cacheTTL:
+      30000,
+
+    fetchFn:
+      this.loadFeeEstimates,
+
+    onUpdate:
+      (data, cached) => {
+
+        this.fees = data;
+
+        console.log(
+
+          cached
+            ? 'Fees cache'
+            : 'Fees network'
+        );
+      }
+  });
+
+this.feesRefresher.start();
+    
   },
 
   unmounted() {
@@ -447,5 +505,16 @@ this.updateHistogram();
 
       this.mempoolRefresher.stop();
     }
+
+    if (this.blocksRefresher) {
+
+  this.blocksRefresher.stop();
+}
+
+if (this.feesRefresher) {
+
+  this.feesRefresher.stop();
+}
+    
   }
 };
