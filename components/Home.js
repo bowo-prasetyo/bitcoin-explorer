@@ -54,6 +54,7 @@ export default {
     </div>
 
     <div class="hash">
+      Hash: 
       {{ latest.id }}
     </div>
 
