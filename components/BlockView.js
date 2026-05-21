@@ -27,11 +27,11 @@ export default {
       <div>
         Timestamp:
         {{ block.timestamp }}
-        <span v-if="latest.timestamp">
+        <span v-if="block.timestamp">
           (
           {{
             new Date(
-              latest.timestamp * 1000
+              block.timestamp * 1000
             ).toUTCString()
           }}
           )
