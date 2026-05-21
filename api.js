@@ -393,6 +393,23 @@ export async function benchmarkNodes() {
   );
 }
 
+export async function
+tryGetBlock(hash) {
+
+  try {
+
+    const r = await apiFetch(
+      `/block/${hash}`
+    );
+
+    return await r.json();
+
+  } catch {
+
+    return null;
+  }
+}
+
 // =====================================================
 // OPTIONAL: Auto benchmark every 5 minutes
 // =====================================================
