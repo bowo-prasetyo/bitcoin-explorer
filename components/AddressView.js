@@ -28,11 +28,13 @@ export default {
       <div>
         Funded:
         {{ data.chain_stats.funded_txo_sum }}
+        satoshis (sats)
       </div>
 
       <div>
         Spent:
         {{ data.chain_stats.spent_txo_sum }}
+        satoshis (sats)
       </div>
 
       <div>
@@ -54,11 +56,13 @@ export default {
       <div>
         Pending Funded:
         {{ data.mempool_stats.funded_txo_sum }}
+        satoshis (sats)
       </div>
 
       <div>
         Pending Spent:
         {{ data.mempool_stats.spent_txo_sum }}
+        satoshis (sats)
       </div>
 
     </div>
