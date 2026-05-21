@@ -1,8 +1,13 @@
 import {
+
   getTipHeight,
   getBlockHash,
   getBlock,
-  getMempool
+  getMempool,
+
+  getRecentBlocks,
+  getFeeEstimates
+
 } from '../api.js';
 
 import { put } from '../db.js';
