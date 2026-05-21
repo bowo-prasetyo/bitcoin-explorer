@@ -316,8 +316,15 @@ export default {
 
     updateHistogram() {
 
-  if (
+      if (
     !this.histogramChart
+  ) {
+    return;
+  }
+
+  if (
+    !this.mempool
+      ?.fee_histogram
   ) {
     return;
   }
