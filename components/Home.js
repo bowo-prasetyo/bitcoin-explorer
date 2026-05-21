@@ -238,29 +238,41 @@ export default {
     // =================================================
     // SEARCH
     // =================================================
+    
+    async search() {
 
-    search() {
+  const q =
+    this.query.trim();
 
-      const q =
-        this.query.trim();
+  if (!q) {
+    return;
+  }
 
-      if (!q) {
-        return;
-      }
+  if (q.length === 64) {
 
-      if (q.length === 64) {
+    const block =
+      await tryGetBlock(q);
 
-        this.$router.push(
-          '/tx/' + q
-        );
+    if (block) {
 
-      } else {
+      this.$router.push(
+        '/block/' + q
+      );
 
-        this.$router.push(
-          '/address/' + q
-        );
-      }
-    },
+    } else {
+
+      this.$router.push(
+        '/tx/' + q
+      );
+    }
+
+    return;
+  }
+
+  this.$router.push(
+    '/address/' + q
+  );
+},
 
     // =================================================
     // LOAD LATEST BLOCK
