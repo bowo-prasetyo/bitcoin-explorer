@@ -89,7 +89,7 @@ export default {
         <tr>
           <th>Height</th>
           <th>TX</th>
-          <th>Size</th>
+          <th>Size (bytes)</th>
           <th>Weight</th>
         </tr>
 
