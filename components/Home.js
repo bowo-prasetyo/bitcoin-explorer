@@ -62,7 +62,6 @@ export default {
       Timestamp:
       {{ latest.timestamp }}
       ({{ new Date(latest.timestamp * 1000).toUTCString() }})
-      // Output: "Thu, 21 May 2026 13:17:46 GMT"
     </div>
 
   </div>
