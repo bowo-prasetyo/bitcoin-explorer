@@ -419,6 +419,7 @@ async loadFeeEstimates() {
           (data, cached) => {
 
             this.mempool = data;
+this.updateHistogram();
 
             console.log(
 
