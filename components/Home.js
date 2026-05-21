@@ -370,6 +370,11 @@ async loadFeeEstimates() {
   },
 
   mounted() {
+    // ===========================================
+    // CREATE HISTOGRAM CHART
+    // ===========================================
+  
+    this.createHistogram();
 
     // ===============================================
     // LATEST BLOCK REFRESHER
