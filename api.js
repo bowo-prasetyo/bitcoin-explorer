@@ -300,14 +300,14 @@ export async function getMempool() {
 
 export async function getRecentBlocks() {
 
-  return apiFetch(
+  return await apiFetch(
     '/blocks'
   );
 }
 
 export async function getFeeEstimates() {
 
-  return apiFetch(
+  return await apiFetch(
     '/fee-estimates'
   );
 }
