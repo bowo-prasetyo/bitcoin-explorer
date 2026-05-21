@@ -45,7 +45,9 @@ export default {
   
   <!-- SATOSHI NAKAMOTO LEGACY -->
   <div class="card">
+    <h2>
     Satoshi Nakamoto Legacy:
+    </h2>
     <div class="hash">
     Genesis Address: <a href-"#/address/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</a>
     </div>
