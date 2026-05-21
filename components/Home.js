@@ -138,16 +138,19 @@ export default {
     <div>
       Pending TX:
       {{ mempool.count }}
+      transactions
     </div>
 
     <div>
       Queue VSize:
       {{ mempool.vsize }}
+      virtual bytes (vBytes)
     </div>
 
     <div>
       Total Fees:
       {{ mempool.total_fee }}
+      satoshis (sats)
     </div>
 
   </div>
