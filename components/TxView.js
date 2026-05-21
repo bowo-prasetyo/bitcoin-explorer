@@ -96,7 +96,7 @@ export default {
       
         <router-link
           v-if="vout.scriptpubkey_address"
-          class="hash-link"
+          class="hash"
           :to="'/address/' + vout.scriptpubkey_address"
         >
           {{ vout.scriptpubkey_address }}
