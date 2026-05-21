@@ -6,7 +6,9 @@ import {
   getMempool,
 
   getRecentBlocks,
-  getFeeEstimates
+  getFeeEstimates,
+
+  tryGetBlock
 
 } from '../api.js';
 
