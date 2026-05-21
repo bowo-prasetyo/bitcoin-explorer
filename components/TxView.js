@@ -31,6 +31,7 @@ export default {
       <div>
         Fee:
         {{ tx.fee }}
+        satoshis (sats)
       </div>
 
       <div>
