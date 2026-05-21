@@ -54,3 +54,24 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
+
+a {
+  color: #00e5ff;            /* neon cyan for dark UI */
+  text-decoration: none;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+a:hover {
+  color: #66faff;
+  text-decoration: underline;
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+}
+
+a:visited {
+  color: #00bcd4;
+}
+
+a:active {
+  color: #ffffff;
+}
