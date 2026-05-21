@@ -314,9 +314,9 @@ export default {
     );
 },
 
-    updateHistogram() {
+updateHistogram() {
 
-      if (
+  if (
     !this.histogramChart
   ) {
     return;
@@ -331,13 +331,13 @@ export default {
 
   const histogram =
     this.mempool
-      .fee_histogram || [];
+      .fee_histogram;
 
   this.histogramChart
     .data.labels =
 
       histogram.map(
-        h => h[0]
+        h => h[0] + ' sat/vB'
       );
 
   this.histogramChart
@@ -351,7 +351,7 @@ export default {
   this.histogramChart
     .update();
 },
-
+    
     async loadRecentBlocks() {
 
   return await getRecentBlocks();
