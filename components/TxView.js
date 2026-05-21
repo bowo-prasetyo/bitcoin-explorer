@@ -90,6 +90,7 @@ export default {
   </div>
 
 </div>
+</div>
 
     <div class="card">
 
