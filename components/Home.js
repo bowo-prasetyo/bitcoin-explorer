@@ -59,14 +59,23 @@ export default {
     </div>
 
     <div>
-      Timestamp:
-      {{ latest.timestamp }}
-      ({{ new Date(latest.timestamp * 1000).toUTCString() }})
-    </div>
+  Timestamp:
+  {{ latest.timestamp }}
+
+  <span v-if="latest.timestamp">
+    (
+    {{
+      new Date(
+        latest.timestamp * 1000
+      ).toUTCString()
+    }}
+    )
+  </span>
+</div>
 
   </div>
 
-  <!-- RECENT BLOCKS ->
+  <!-- RECENT BLOCKS -->
   <div class="card">
 
     <h2>
