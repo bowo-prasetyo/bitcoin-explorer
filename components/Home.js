@@ -57,7 +57,7 @@ export default {
 
     <div class="hash">
       Hash: 
-      {{ latest.id }}
+      <a href-"/block/{{ latest.id }}">{{ latest.id }}</a>
     </div>
 
     <div>
