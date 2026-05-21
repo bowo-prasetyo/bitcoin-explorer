@@ -196,3 +196,9 @@ Potential future enhancements:
 # License
 
 MIT License
+
+---
+
+# Assisted By
+
+[ChatGPT](https://chatgpt.com/)
