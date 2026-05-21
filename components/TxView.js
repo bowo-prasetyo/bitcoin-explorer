@@ -65,17 +65,31 @@ export default {
       </div>
 
       <div
-        v-for="(vin, index) in tx.vin"
-        :key="index"
-      >
+  v-for="(vin, index) in tx.vin"
+  :key="index"
+>
 
-        <div class="hash">
-          {{ vin.prevout?.scriptpubkey_address || 'Coinbase' }}
-        </div>
+  <!-- NORMAL INPUT -->
+  <router-link
+    v-if="vin.prevout?.scriptpubkey_address"
+    class="hash"
+    :to="
+      '/address/' +
+      vin.prevout.scriptpubkey_address
+    "
+  >
+    {{ vin.prevout.scriptpubkey_address }}
+  </router-link>
 
-      </div>
+  <!-- COINBASE INPUT -->
+  <div
+    v-else
+    class="hash"
+  >
+    Coinbase
+  </div>
 
-    </div>
+</div>
 
     <div class="card">
 
