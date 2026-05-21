@@ -88,16 +88,20 @@ export default {
       >
         No outputs
       </div>
-
+      
       <div
         v-for="(vout, index) in tx.vout"
         :key="index"
       >
-
-        <div class="hash">
+      
+        <router-link
+          v-if="vout.scriptpubkey_address"
+          class="hash-link"
+          :to="'/address/' + vout.scriptpubkey_address"
+        >
           {{ vout.scriptpubkey_address }}
-        </div>
-
+        </router-link>
+      
       </div>
 
     </div>
