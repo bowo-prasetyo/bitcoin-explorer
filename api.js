@@ -215,8 +215,12 @@ export async function getBlock(hash) {
   return await r.json();
 }
 
-export async function getBlockTxs(hash) {
-  const r = await apiFetch(`/block/${hash}/txs`);
+// Esplora returns block transactions 25 at a time; startIndex must be a
+// multiple of 25.
+export const BLOCK_TXS_PAGE_SIZE = 25;
+
+export async function getBlockTxs(hash, startIndex = 0) {
+  const r = await apiFetch(`/block/${hash}/txs/${startIndex}`);
   return await r.json();
 }
 
@@ -227,6 +231,18 @@ export async function getTx(txid) {
 
 export async function getAddress(address) {
   const r = await apiFetch(`/address/${address}`);
+  return await r.json();
+}
+
+// Up to 50 unconfirmed transactions plus the newest 25 confirmed ones.
+export async function getAddressTxs(address) {
+  const r = await apiFetch(`/address/${address}/txs`);
+  return await r.json();
+}
+
+// The next 25 confirmed transactions after lastSeenTxid.
+export async function getAddressTxsChain(address, lastSeenTxid) {
+  const r = await apiFetch(`/address/${address}/txs/chain/${lastSeenTxid}`);
   return await r.json();
 }
 

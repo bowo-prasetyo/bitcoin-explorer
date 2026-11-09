@@ -32,6 +32,8 @@ export const CACHE_TTL = {
   recentBlocks: 15000,
   feeEstimates: 30000,
   block: 30000,
+  blockDeep: 600000,         // >= 6 confirmations: only the count changes
+  blockTxs: 86400000,        // a block's transactions never change
   txPending: 15000,
   txConfirmed: 3600000,
   address: 30000
@@ -127,7 +129,11 @@ export function createSmartRefresher({
   // optional reactive object from createStatus()
   status = createStatus(),
 
-  shouldStop = () => false
+  shouldStop = () => false,
+
+  // false: load once (cache-first, network if stale) and never poll.
+  // For data that doesn't change, such as a page of block transactions.
+  poll = true
 }) {
 
   let timer = null;
@@ -161,7 +167,7 @@ export function createSmartRefresher({
       return;
     }
 
-    if (!isPageVisible()) {
+    if (poll && !isPageVisible()) {
       scheduleNext();
       return;
     }
@@ -223,7 +229,10 @@ export function createSmartRefresher({
     } finally {
       inFlight = false;
       status.refreshing = false;
-      scheduleNext();
+
+      if (poll) {
+        scheduleNext();
+      }
     }
   }
 
@@ -249,7 +258,9 @@ export function createSmartRefresher({
   }
 
   function start() {
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    if (poll) {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
     refresh();
   }
 
