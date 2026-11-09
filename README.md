@@ -21,7 +21,8 @@ it can't.
 
 | Where | Checked locally | Not proven |
 |---|---|---|
-| **Block** | The 80-byte header hashes to the block id. The hash meets the difficulty target in the header. That target is within mainnet limits. Time, Merkle root and previous block match what's shown. | That the target is the *right* difficulty for that height, or that the block is on the chain with the most work. |
+| **Block** | The 80-byte header hashes to the block id. The hash meets the difficulty target in the header. That target is within mainnet limits. Time, Merkle root and previous block match what's shown. | That the block is on the chain with the most work. |
+| **Block difficulty** | The difficulty is the one Bitcoin's rules require at that height. Inside a 2,016-block period it equals the period's first block. At the period start it is the retarget computed from the previous period's first and last headers (two-week target, 4× clamp, network limit), matching Bitcoin Core's arithmetic. All headers used pass the proof-of-work checks, and the period's first block builds on the previous period's last. | One retarget step only. The previous period's difficulty is taken from its headers, not re-derived back to the genesis block, and blocks between the period start and this block aren't linked header by header. |
 | **Block transactions** | The full txid list rebuilds the header's Merkle root. The count matches. The transactions on the page are in that list, in order. | (A block's transactions can't be hidden or reordered without failing this.) |
 | **Transaction contents** | The raw transaction hashes to its txid. Output amounts and scripts match what's shown. Spent outputs match the inputs shown. | Input amounts, and therefore the fee, come from the spent outputs, which are checked on their own pages. |
 | **Transaction inclusion** | A Merkle proof leads from the txid to a block header that passes the proof-of-work checks above. | Same limits as the block check. |
@@ -136,6 +137,7 @@ request.
 | `spv.js` | Verification primitives: header proof of work, Merkle roots and proofs, txids from raw transactions |
 | `verify.js` | Runs the checks behind each badge |
 | `consensus.js` | Compares chain tips across providers |
+| `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |
 | `components/` | Views, plus the shared `DataStatus` and `VerifyBadge` |
 | `tests/` | Unit tests |
 

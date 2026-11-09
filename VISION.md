@@ -74,10 +74,17 @@ transaction.
 - Provider health panel.
 - Bring-your-own Esplora endpoint, optionally exclusive.
 
+### Difficulty check ✅
+
+- Every block page checks that its difficulty is the one the retarget
+  rules require at its height: equal to its period's first block, which
+  in turn is the retarget computed from the previous period's headers.
+  The arithmetic is tested against Bitcoin Core's own test vectors.
+
 ### Next ideas
 
-- Check that a block's difficulty is the right one for its height, by
-  following headers back to a retarget boundary.
+- Extend the difficulty check further back (several retarget steps), or
+  link every header between the period start and the block.
 - Verify input amounts by checking the spent outputs' transactions.
 - Show the cumulative work behind the tip.
 
