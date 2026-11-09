@@ -66,8 +66,7 @@ export default {
   <!-- SEARCH -->
   <div class="card">
 
-    <h2>Assay</h2>
-    <p class="muted">A Bitcoin explorer that checks before it shows.</p>
+    <h2>A Bitcoin explorer that checks before it shows.</h2>
 
     <form class="search" @submit.prevent="search" role="search">
       <input

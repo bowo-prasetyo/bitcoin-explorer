@@ -1,4 +1,9 @@
-# Assay
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/assay-logo.svg">
+    <img src="brand/assay-logo-on-light.svg" alt="Assay" height="48">
+  </picture>
+</h1>
 
 A Bitcoin explorer that runs entirely in your browser, built toward
 **verifying** blockchain data rather than trusting it.
@@ -177,6 +182,7 @@ request.
 | `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |
 | `components/` | Views, plus the shared `DataStatus` and `VerifyBadge` |
 | `tests/` | Unit tests |
+| `brand/`, `favicon.*`, `apple-touch-icon.png` | Logo, favicons and brand guide ([brand/README.md](brand/README.md)) |
 
 ## License
 
