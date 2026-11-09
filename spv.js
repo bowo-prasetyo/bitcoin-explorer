@@ -80,6 +80,27 @@ export function targetFromBits(bits) {
     : BigInt(mantissa) << BigInt(8 * (exponent - 3));
 }
 
+// Target (BigInt) -> compact "bits", exactly as Bitcoin Core's
+// arith_uint256::GetCompact (the encoding truncates low-order bits).
+export function bitsFromTarget(target) {
+  if (target < 0n) {
+    throw new Error('Negative target');
+  }
+
+  let size = target === 0n ? 0 : Math.ceil(target.toString(16).length / 2);
+  let compact = size <= 3
+    ? Number(target << BigInt(8 * (3 - size)))
+    : Number(target >> BigInt(8 * (size - 3)));
+
+  // The top mantissa bit is a sign bit; shift into the next byte instead.
+  if (compact & 0x00800000) {
+    compact >>>= 8;
+    size++;
+  }
+
+  return ((size << 24) | compact) >>> 0;
+}
+
 // Expected number of hashes to find a block at this target.
 export function expectedHashes(target) {
   return (1n << 256n) / (target + 1n);
