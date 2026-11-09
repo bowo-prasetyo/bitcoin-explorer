@@ -3,6 +3,7 @@
 import router from './router.js';
 import { initDB, pruneCache } from './db.js';
 import DataStatus from './components/DataStatus.js';
+import VerifyBadge from './components/VerifyBadge.js';
 
 const App = {
   template: `
@@ -11,6 +12,7 @@ const App = {
     <header>
       <router-link to="/">Home</router-link>
       <router-link to="/charts">Charts</router-link>
+      <router-link to="/providers">Providers</router-link>
     </header>
 
     <!-- Keyed on the full URL so moving between two blocks (or two pages
@@ -45,6 +47,7 @@ async function bootstrap() {
     const app = Vue.createApp(App);
 
     app.component('data-status', DataStatus);
+    app.component('verify-badge', VerifyBadge);
     app.use(router);
     app.mount('#app');
 

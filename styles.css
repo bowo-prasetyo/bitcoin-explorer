@@ -30,6 +30,7 @@ header a {
 }
 
 input {
+  box-sizing: border-box;
   width: 100%;
   padding: 10px;
   border-radius: 6px;
@@ -291,4 +292,103 @@ td.hash {
   td.hash {
     width: auto;
   }
+}
+
+/* ---------- verification badges ---------- */
+
+.verify {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid #555;
+  background: #222;
+}
+
+.verify-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.verify-icon {
+  font-weight: bold;
+  width: 1em;
+  text-align: center;
+}
+
+.verify-ok {
+  border-color: #66bb6a;
+  background: #15261a;
+}
+
+.verify-ok .verify-icon,
+.verify-ok .verify-title {
+  color: #a5d6a7;
+}
+
+.verify-fail {
+  border-color: #ef5350;
+  background: #2a1515;
+}
+
+.verify-fail .verify-icon,
+.verify-fail .verify-title {
+  color: #ffcdd2;
+  font-weight: bold;
+}
+
+.verify-error .verify-title,
+.verify-na .verify-title,
+.verify-pending .verify-title {
+  color: #9a9a9a;
+}
+
+.verify details {
+  margin-top: 6px;
+}
+
+.verify summary {
+  cursor: pointer;
+  color: #9a9a9a;
+  font-size: 0.85em;
+}
+
+.verify-checks {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.verify-checks li {
+  padding: 2px 0;
+}
+
+/* ---------- providers page ---------- */
+
+.provider-form {
+  display: grid;
+  gap: 10px;
+}
+
+.provider-form label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.provider-form input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notice-ok {
+  background: #15261a;
+  border-color: #66bb6a;
+  color: #c8e6c9;
 }

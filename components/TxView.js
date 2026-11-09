@@ -19,6 +19,11 @@ import {
 
 import { now } from './DataStatus.js';
 
+import {
+  verifyTransactionContents,
+  verifyTransactionInclusion
+} from '../verify.js';
+
 export default {
 
   template: `
@@ -76,6 +81,11 @@ export default {
         </dd>
 
       </dl>
+
+      <template v-if="tx">
+        <verify-badge :result="contentsCheck"></verify-badge>
+        <verify-badge :result="inclusionCheck"></verify-badge>
+      </template>
 
     </div>
 
@@ -165,7 +175,12 @@ export default {
     return {
       txid: '',
       tx: null,
-      status: createStatus()
+      status: createStatus(),
+
+      contentsCheck: null,
+      contentsStarted: false,
+      inclusionCheck: null,
+      inclusionStartedFor: null
     };
   },
 
@@ -197,6 +212,24 @@ export default {
 
     loadTransaction() {
       return getTx(this.txid);
+    },
+
+    async verify() {
+      const tx = this.tx;
+
+      if (!this.contentsStarted) {
+        this.contentsStarted = true;
+        verifyTransactionContents(tx).then(r => { this.contentsCheck = r; });
+      }
+
+      // Re-check inclusion once a pending transaction confirms.
+      const key = tx.status?.confirmed ? tx.status.block_hash : 'unconfirmed';
+
+      if (this.inclusionStartedFor !== key) {
+        this.inclusionStartedFor = key;
+        this.inclusionCheck = null;
+        this.inclusionCheck = await verifyTransactionInclusion(tx);
+      }
     }
   },
 
@@ -214,7 +247,10 @@ export default {
 
       fetchFn: this.loadTransaction,
       status: this.status,
-      onUpdate: data => { this.tx = data; },
+      onUpdate: data => {
+        this.tx = data;
+        this.verify();
+      },
 
       // Stop polling once confirmed.
       shouldStop: () => this.tx?.status?.confirmed === true

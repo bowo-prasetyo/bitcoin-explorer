@@ -3,6 +3,7 @@ import BlockView from './components/BlockView.js';
 import TxView from './components/TxView.js';
 import AddressView from './components/AddressView.js';
 import ChartsView from './components/ChartsView.js';
+import ProvidersView from './components/ProvidersView.js';
 
 export default VueRouter.createRouter({
   history: VueRouter.createWebHashHistory(),
@@ -12,6 +13,7 @@ export default VueRouter.createRouter({
     { path: '/block/:hash', component: BlockView },
     { path: '/tx/:txid', component: TxView },
     { path: '/address/:addr', component: AddressView },
-    { path: '/charts', component: ChartsView }
+    { path: '/charts', component: ChartsView },
+    { path: '/providers', component: ProvidersView }
   ]
 });

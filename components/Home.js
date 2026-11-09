@@ -27,6 +27,8 @@ import {
 
 import { now } from './DataStatus.js';
 
+import { verifyTip } from '../verify.js';
+
 // Confirmation targets worth showing, out of the ~28 Esplora returns.
 const FEE_TARGETS = [1, 3, 6, 12, 24, 144, 504, 1008];
 
@@ -101,6 +103,8 @@ export default {
       <dt>Mined</dt>
       <dd>{{ formatTime(latest.timestamp) }} <span class="muted">({{ ago(latest.timestamp) }})</span></dd>
     </dl>
+
+    <verify-badge v-if="latest.id" :result="tipCheck"></verify-badge>
 
   </div>
 
@@ -228,7 +232,10 @@ export default {
       latestStatus: createStatus(),
       blocksStatus: createStatus(),
       mempoolStatus: createStatus(),
-      feesStatus: createStatus()
+      feesStatus: createStatus(),
+
+      tipCheck: null,
+      tipCheckedFor: null
     };
   },
 
@@ -311,6 +318,17 @@ export default {
       return await getBlock(hash);
     },
 
+    // Ask every provider independently whenever a new tip shows up.
+    async checkTip() {
+      if (!this.latest.id || this.tipCheckedFor === this.latest.id) {
+        return;
+      }
+
+      this.tipCheckedFor = this.latest.id;
+      this.tipCheck = null;
+      this.tipCheck = await verifyTip();
+    },
+
     loadMempool() {
       return getMempool();
     },
@@ -375,7 +393,10 @@ export default {
         cacheTTL: CACHE_TTL.latestBlock,
         fetchFn: this.loadLatestBlock,
         status: this.latestStatus,
-        onUpdate: data => { this.latest = data; }
+        onUpdate: data => {
+          this.latest = data;
+          this.checkTip();
+        }
       }),
 
       createSmartRefresher({

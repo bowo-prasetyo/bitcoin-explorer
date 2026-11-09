@@ -23,6 +23,11 @@ import {
 
 import { now } from './DataStatus.js';
 
+import {
+  verifyBlockHeader,
+  verifyBlockTransactions
+} from '../verify.js';
+
 export default {
 
   template: `
@@ -65,6 +70,8 @@ export default {
         <dd>{{ formatNumber(block.weight) }} WU</dd>
       </dl>
 
+      <verify-badge v-if="block" :result="headerCheck"></verify-badge>
+
     </div>
 
     <div class="card" v-if="block">
@@ -78,6 +85,8 @@ export default {
       </h3>
 
       <data-status :status="txsStatus" what="page of transactions"></data-status>
+
+      <verify-badge v-if="txs.length" :result="txListCheck"></verify-badge>
 
       <div v-if="txs.length" class="table-scroll">
         <table>
@@ -135,7 +144,12 @@ export default {
       nextHash: null,
       txs: [],
       status: createStatus(),
-      txsStatus: createStatus()
+      txsStatus: createStatus(),
+
+      headerCheck: null,
+      txListCheck: null,
+      txListStarted: false,
+      verifiedBlockId: null
     };
   },
 
@@ -198,6 +212,42 @@ export default {
 
     loadTxPage() {
       return getBlockTxs(this.hash, this.firstIndex);
+    },
+
+    // Verify each block once per view, from whichever data arrives first.
+    async verifyHeader() {
+      if (!this.block || this.verifiedBlockId === this.block.id) {
+        return;
+      }
+
+      this.verifiedBlockId = this.block.id;
+      this.headerCheck = null;
+      this.headerCheck = await verifyBlockHeader(this.block);
+      this.verifyTxList();
+    },
+
+    async verifyTxList() {
+      if (!this.headerCheck || !this.txs.length || this.txListStarted) {
+        return;
+      }
+
+      this.txListStarted = true;
+
+      if (!this.headerCheck.merkleRoot) {
+        this.txListCheck = {
+          state: 'error',
+          title: 'Needs a checked block header first',
+          checks: []
+        };
+        return;
+      }
+
+      this.txListCheck = await verifyBlockTransactions(
+        this.block,
+        this.headerCheck.merkleRoot,
+        this.txs,
+        this.firstIndex
+      );
     }
   },
 
@@ -224,6 +274,7 @@ export default {
           this.block = data.block;
           this.tipHeight = data.tipHeight ?? null;
           this.nextHash = data.nextHash ?? null;
+          this.verifyHeader();
         },
 
         // Once a successor exists and the block is a few deep, the only
@@ -240,7 +291,10 @@ export default {
         fetchFn: this.loadTxPage,
         status: this.txsStatus,
         poll: false,
-        onUpdate: data => { this.txs = data; }
+        onUpdate: data => {
+          this.txs = data;
+          this.verifyTxList();
+        }
       })
     ];
 
