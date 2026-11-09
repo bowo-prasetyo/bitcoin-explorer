@@ -151,3 +151,72 @@ export function checkDifficulty(block, headers = {}) {
 
   return { ok: checks.every(c => c.ok), checks, facts };
 }
+
+// =====================================================
+// FULL HISTORY: every retarget from genesis
+// =====================================================
+
+export const GENESIS_HASH =
+  '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f';
+
+// Checks every retarget from the genesis block up to the period starting
+// at `lastStart`, so each period's difficulty follows from the genesis
+// block's fixed difficulty and the timestamps in between.
+//
+// starts: { [P]: header } for P = 0, 2016, ..., lastStart (period starts)
+// ends:   { [P - 1]: header } for P = 2016, ..., lastStart (period ends)
+// header: { hash, bits, timestamp, previousBlockHash, powOk }
+//
+// Returns { ok, retargets, failures: [{ height, problem }], stats }.
+export function checkDifficultyHistory(starts, ends, lastStart) {
+  const failures = [];
+  const fail = (height, problem) => failures.push({ height, problem });
+
+  const genesis = starts[0];
+
+  if (!genesis) {
+    throw new Error('Missing genesis header');
+  }
+
+  if (genesis.hash !== GENESIS_HASH) fail(0, 'not the genesis block');
+  if (genesis.bits !== GENESIS_BITS) fail(0, 'genesis difficulty is not 0x1d00ffff');
+  if (!genesis.powOk) fail(0, 'invalid proof of work');
+
+  const stats = { retargets: 0, clamped: 0, maxUp: null, maxDown: null };
+
+  for (let p = RETARGET_INTERVAL; p <= lastStart; p += RETARGET_INTERVAL) {
+    const prev = starts[p - RETARGET_INTERVAL];
+    const end = ends[p - 1];
+    const start = starts[p];
+
+    if (!prev || !end || !start) {
+      throw new Error(`Missing header near height ${p}`);
+    }
+
+    if (!end.powOk) fail(p - 1, 'invalid proof of work');
+    if (!start.powOk) fail(p, 'invalid proof of work');
+
+    if (end.bits !== prev.bits) {
+      fail(p - 1, `difficulty differs from its period's first block`);
+    }
+
+    if (start.previousBlockHash !== end.hash) {
+      fail(p, `doesn't build on block ${(p - 1).toLocaleString('en-US')}`);
+    }
+
+    const expected = nextBits(prev.bits, prev.timestamp, end.timestamp);
+
+    if (start.bits !== expected.bits) {
+      fail(p, `difficulty isn't the retarget from the previous period`);
+    }
+
+    stats.retargets++;
+    if (expected.clamped) stats.clamped++;
+
+    const change = difficultyChange(prev.bits, start.bits);
+    if (!stats.maxUp || change > stats.maxUp.change) stats.maxUp = { height: p, change };
+    if (!stats.maxDown || change < stats.maxDown.change) stats.maxDown = { height: p, change };
+  }
+
+  return { ok: failures.length === 0, retargets: stats.retargets, failures, stats };
+}

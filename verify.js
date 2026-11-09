@@ -45,7 +45,13 @@ import { formatBtc, formatSats } from './format.js';
 
 import { ApiError } from './api.js';
 
-import { headersNeeded, checkDifficulty } from './difficulty.js';
+import {
+  headersNeeded,
+  checkDifficulty,
+  checkDifficultyHistory,
+  periodStart,
+  RETARGET_INTERVAL
+} from './difficulty.js';
 
 import {
   periodStarts,
@@ -570,6 +576,149 @@ export async function verifyChainWork(tip, { onProgress = () => {} } = {}) {
     );
   } catch (err) {
     return errorResult("Couldn't add up the total work", err);
+  }
+}
+
+// =====================================================
+// DIFFICULTY HISTORY (every retarget back to genesis)
+// =====================================================
+
+// Headers needed to trace the difficulty of `height` back to genesis:
+// every period start, and every period end before it.
+export function historyHeaderCount(height) {
+  const periods = periodStart(height) / RETARGET_INTERVAL + 1;
+  return 2 * periods - 1;
+}
+
+const toCheckable = ({ hash, pow }) => ({
+  hash,
+  bits: pow.header.bits,
+  timestamp: pow.header.timestamp,
+  previousBlockHash: pow.header.previousBlockHash,
+  powOk: pow.ok
+});
+
+// Loads the headers for checkDifficultyHistory. With cachedOnly, uses
+// only the local header store (no network) and resolves to null if
+// anything is missing. Period ends are fetched by the hash the next
+// period start points back to, so their link is built in.
+async function loadHistoryHeaders(lastStart, tipHeight, { cachedOnly, useCache, onProgress }) {
+  const startHeights = periodStarts(lastStart);
+  const total = startHeights.length * 2 - 1;
+  let done = 0;
+  const tick = () => onProgress(++done, total);
+
+  const fromCache = async (height, hash = null) => {
+    const c = await get('headers', height).catch(() => null);
+    if (!c || (hash && c.hash !== hash)) return null;
+    return { hash: c.hash, pow: await verifyHeaderPoW(c.hex, c.hash) };
+  };
+
+  const startsLoaded = await mapLimit(startHeights, INPUT_FETCH_CONCURRENCY, async h => {
+    const r = cachedOnly
+      ? await fromCache(h)
+      : await loadHeaderAtHeight(h, tipHeight, useCache);
+    tick();
+    return r;
+  });
+
+  if (startsLoaded.some(r => !r)) return null;
+
+  const endHeights = startHeights.slice(1).map(h => h - 1);
+
+  const endsLoaded = await mapLimit(endHeights, INPUT_FETCH_CONCURRENCY, async (h, i) => {
+    const hash = startsLoaded[i + 1].pow.header.previousBlockHash;
+    const r = cachedOnly
+      ? await fromCache(h, hash)
+      : { hash, pow: (await loadVerifiedHeader(hash, h)).pow };
+    tick();
+    return r;
+  });
+
+  if (endsLoaded.some(r => !r)) return null;
+
+  const starts = {};
+  const ends = {};
+  startHeights.forEach((h, i) => { starts[h] = toCheckable(startsLoaded[i]); });
+  endHeights.forEach((h, i) => { ends[h] = toCheckable(endsLoaded[i]); });
+
+  return { starts, ends, count: total };
+}
+
+// Traces the difficulty of block `height` back to the genesis block:
+// every retarget on the way must follow from the previous period.
+// With cachedOnly, resolves to null when headers would have to be
+// downloaded (the caller can then offer to fetch them).
+export async function verifyDifficultyHistory(height, {
+  tipHeight = null,
+  cachedOnly = false,
+  onProgress = () => {}
+} = {}) {
+  const lastStart = periodStart(height);
+
+  if (lastStart === 0) {
+    return result('na', 'In the first difficulty period: nothing to trace back.');
+  }
+
+  try {
+    let loaded = await loadHistoryHeaders(lastStart, tipHeight, { cachedOnly, useCache: true, onProgress });
+
+    if (!loaded) {
+      return null; // only when cachedOnly and something isn't cached
+    }
+
+    let r = checkDifficultyHistory(loaded.starts, loaded.ends, lastStart);
+
+    // A period start cached by height could be from a replaced block;
+    // never report a failure without fresh headers.
+    if (!r.ok && !cachedOnly) {
+      loaded = await loadHistoryHeaders(lastStart, tipHeight, { cachedOnly: false, useCache: false, onProgress });
+      r = checkDifficultyHistory(loaded.starts, loaded.ends, lastStart);
+    } else if (!r.ok && cachedOnly) {
+      return null; // let the caller run a fresh check instead
+    }
+
+    const has = test => r.failures.some(f => test(f));
+    const n = loaded.count.toLocaleString('en-US');
+    const retargets = r.retargets.toLocaleString('en-US');
+
+    const checks = [
+      { label: 'Starts from the genesis block and its fixed difficulty (0x1d00ffff)', ok: !has(f => f.height === 0) },
+      { label: `All ${retargets} retargets follow from the previous period's timestamps`, ok: !has(f => /retarget/.test(f.problem)) },
+      { label: "Every period's last block has its period's difficulty", ok: !has(f => /period's first block/.test(f.problem)) },
+      { label: "Every period builds on the previous period's last block", ok: !has(f => /build on/.test(f.problem)) },
+      { label: `All ${n} headers pass proof-of-work checks`, ok: !has(f => /proof of work/.test(f.problem)) }
+    ];
+
+    const pct = c => `${c >= 0 ? '+' : '−'}${Math.abs(c * 100).toFixed(1)} %`;
+    const at = h => `at block ${h.toLocaleString('en-US')}`;
+
+    const facts = r.ok
+      ? [
+          { label: 'Retargets checked', value: retargets },
+          { label: 'Largest increase', value: `${pct(r.stats.maxUp.change)} ${at(r.stats.maxUp.height)}` },
+          { label: 'Largest decrease', value: `${pct(r.stats.maxDown.change)} ${at(r.stats.maxDown.height)}` },
+          { label: 'Hit the 4× limit', value: `${r.stats.clamped.toLocaleString('en-US')} times` }
+        ]
+      : r.failures.slice(0, 3).map(f => ({ label: `Block ${f.height.toLocaleString('en-US')}`, value: f.problem }));
+
+    return result(
+      r.ok ? 'ok' : 'fail',
+      r.ok
+        ? `Difficulty traced back to the genesis block (${retargets} retargets)`
+        : 'Difficulty history check FAILED',
+      checks,
+      {
+        facts,
+        note: r.ok
+          ? "This period's difficulty follows from the genesis block through every " +
+            'retarget, using only proof-of-work-checked headers. Blocks inside a ' +
+            'period are not linked one by one.'
+          : undefined
+      }
+    );
+  } catch (err) {
+    return errorResult("Couldn't trace the difficulty history", err);
   }
 }
 

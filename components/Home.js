@@ -30,6 +30,8 @@ import { now } from './DataStatus.js';
 import {
   verifyTip,
   verifyChainWork,
+  verifyDifficultyHistory,
+  historyHeaderCount,
   chainWorkHeaderCount
 } from '../verify.js';
 
@@ -129,8 +131,10 @@ export default {
 
     <template v-if="!chainWorkEnabled">
       <p class="muted">
-        How much proof of work stands behind this chain? Your browser can add
-        it up exactly from one header per difficulty period, about
+        How much proof of work stands behind this chain, and does every
+        difficulty change since the genesis block follow the rules? Your
+        browser can check both from the first and last header of each
+        difficulty period, about
         {{ formatNumber(headerCount) }} {{ headerCount === 1 ? 'header' : 'headers' }}
         ({{ Math.ceil(headerCount * 80 / 1024) }} KB)
         the first time. After that, only new ones.
@@ -139,11 +143,12 @@ export default {
     </template>
 
     <template v-else>
-      <div v-if="chainWorkProgress && !chainWorkCheck" class="muted">
-        Checking headers… {{ formatNumber(chainWorkProgress.done) }} / {{ formatNumber(chainWorkProgress.total) }}
+      <div v-if="chainWorkProgress && !historyCheck" class="muted">
+        {{ chainWorkProgress.label }}… {{ formatNumber(chainWorkProgress.done) }} / {{ formatNumber(chainWorkProgress.total) }}
         <progress :value="chainWorkProgress.done" :max="chainWorkProgress.total"></progress>
       </div>
       <verify-badge :result="chainWorkCheck"></verify-badge>
+      <verify-badge v-if="chainWorkCheck" :result="historyCheck"></verify-badge>
     </template>
 
   </div>
@@ -279,6 +284,7 @@ export default {
 
       chainWorkEnabled: readFlag(),
       chainWorkCheck: null,
+      historyCheck: null,
       chainWorkProgress: null,
       chainWorkFor: null
     };
@@ -286,7 +292,7 @@ export default {
 
   computed: {
     headerCount() {
-      return this.latest.height === undefined ? 0 : chainWorkHeaderCount(this.latest.height);
+      return this.latest.height === undefined ? 0 : historyHeaderCount(this.latest.height);
     },
 
     feeRows() {
@@ -394,20 +400,25 @@ export default {
 
       this.chainWorkFor = tip.id;
       this.chainWorkCheck = null;
-      this.chainWorkProgress = { done: 0, total: chainWorkHeaderCount(tip.height) };
+      this.historyCheck = null;
 
-      const r = await verifyChainWork(tip, {
-        onProgress: (done, total) => {
-          if (this.chainWorkFor === tip.id) {
-            this.chainWorkProgress = { done, total };
-          }
-        }
+      // A newer tip may start its own run meanwhile; drop stale updates.
+      const current = () => this.chainWorkFor === tip.id;
+      const progress = label => (done, total) => {
+        if (current()) this.chainWorkProgress = { label, done, total };
+      };
+
+      progress('Adding up the work')(0, chainWorkHeaderCount(tip.height));
+      const work = await verifyChainWork(tip, { onProgress: progress('Adding up the work') });
+      if (!current()) return;
+      this.chainWorkCheck = work;
+
+      // Period starts are now cached; this mostly fetches period ends.
+      const history = await verifyDifficultyHistory(tip.height, {
+        tipHeight: tip.height,
+        onProgress: progress('Tracing the difficulty history')
       });
-
-      // A newer tip may have started its own run meanwhile.
-      if (this.chainWorkFor === tip.id) {
-        this.chainWorkCheck = r;
-      }
+      if (current()) this.historyCheck = history;
     },
 
     loadMempool() {
