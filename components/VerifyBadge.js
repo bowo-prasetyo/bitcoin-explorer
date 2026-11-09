@@ -31,6 +31,8 @@ export default {
       <span class="verify-title">{{ result ? result.title : 'Verifying in your browser…' }}</span>
     </div>
 
+    <slot></slot>
+
     <details v-if="hasDetails">
       <summary>What was checked</summary>
 

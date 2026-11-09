@@ -24,7 +24,8 @@ it can't.
 | **Block** | The 80-byte header hashes to the block id. The hash meets the difficulty target in the header. That target is within mainnet limits. Time, Merkle root and previous block match what's shown. | That the block is on the chain with the most work. |
 | **Block difficulty** | The difficulty is the one Bitcoin's rules require at that height. Inside a 2,016-block period it equals the period's first block. At the period start it is the retarget computed from the previous period's first and last headers (two-week target, 4× clamp, network limit), matching Bitcoin Core's arithmetic. All headers used pass the proof-of-work checks, and the period's first block builds on the previous period's last. | One retarget step only. The previous period's difficulty is taken from its headers, not re-derived back to the genesis block, and blocks between the period start and this block aren't linked header by header. |
 | **Block transactions** | The full txid list rebuilds the header's Merkle root. The count matches. The transactions on the page are in that list, in order. | (A block's transactions can't be hidden or reordered without failing this.) |
-| **Transaction contents** | The raw transaction hashes to its txid. Output amounts and scripts match what's shown. Spent outputs match the inputs shown. | Input amounts, and therefore the fee, come from the spent outputs, which are checked on their own pages. |
+| **Transaction contents** | The raw transaction hashes to its txid. Output amounts and scripts match what's shown. Spent outputs match the inputs shown. | (Input amounts are covered by the next row.) |
+| **Input amounts and fee** | Each spent transaction is downloaded raw and hashes to its txid. The output each input spends holds the amount and address shown, marked ✓/✗ per input. Fee = inputs − verified outputs, and it matches the fee shown. Runs automatically for up to 25 spent transactions; above that, a button starts it. | That the spent outputs were still unspent. That needs the full set of unspent outputs, which only full nodes keep. |
 | **Transaction inclusion** | A Merkle proof leads from the txid to a block header that passes the proof-of-work checks above. | Same limits as the block check. |
 | **Chain tip** (home page, Providers page) | Every provider is asked independently. Each tip header's proof of work is checked. The tips are compared, telling "one block behind on the same chain" from "a different chain". | With a single provider, there is nothing to compare. |
 | **Address** | Nothing yet. | Balances and history need the full UTXO set; they come from the provider. |
@@ -137,6 +138,7 @@ request.
 | `spv.js` | Verification primitives: header proof of work, Merkle roots and proofs, txids from raw transactions |
 | `verify.js` | Runs the checks behind each badge |
 | `consensus.js` | Compares chain tips across providers |
+| `inputs.js` | Checks inputs against the raw transactions they spend |
 | `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |
 | `components/` | Views, plus the shared `DataStatus` and `VerifyBadge` |
 | `tests/` | Unit tests |
