@@ -28,6 +28,7 @@ it can't.
 | **Input amounts and fee** | Each spent transaction is downloaded raw and hashes to its txid. The output each input spends holds the amount and address shown, marked ✓/✗ per input. Fee = inputs − verified outputs, and it matches the fee shown. Runs automatically for up to 25 spent transactions; above that, a button starts it. | That the spent outputs were still unspent. That needs the full set of unspent outputs, which only full nodes keep. |
 | **Transaction inclusion** | A Merkle proof leads from the txid to a block header that passes the proof-of-work checks above. | Same limits as the block check. |
 | **Chain tip** (home page, Providers page) | Every provider is asked independently. Each tip header's proof of work is checked. The tips are compared, telling "one block behind on the same chain" from "a different chain". | With a single provider, there is nothing to compare. |
+| **Total work behind the tip** (home page, opt-in) | Adds up the chain's total proof of work exactly, from one proof-of-work-checked header per 2,016-block difficulty period (about 460 headers, roughly 37 KB, the first time; cached after). The tip's difficulty must match its period's first block. The result is shown in the same hex as Bitcoin Core's `chainwork`, so you can compare it with your own node. | It assumes every block in a period has its first header's difficulty, as mainnet's rules require; it doesn't link every header to the next. |
 | **Address** | Nothing yet. | Balances and history need the full UTXO set; they come from the provider. |
 
 A failing check is shown in red with the specific check that failed. A
@@ -138,6 +139,7 @@ request.
 | `spv.js` | Verification primitives: header proof of work, Merkle roots and proofs, txids from raw transactions |
 | `verify.js` | Runs the checks behind each badge |
 | `consensus.js` | Compares chain tips across providers |
+| `chainwork.js` | Total work behind a tip, from one header per difficulty period |
 | `inputs.js` | Checks inputs against the raw transactions they spend |
 | `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |
 | `components/` | Views, plus the shared `DataStatus` and `VerifyBadge` |
