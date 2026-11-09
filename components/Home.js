@@ -1,4 +1,5 @@
 import {
+  ApiError,
   getTipHeight,
   getBlockHash,
   getBlock,
@@ -8,13 +9,36 @@ import {
   tryGetBlock
 } from '../api.js';
 
-import { put } from '../db.js';
-
 import {
   createSmartRefresher,
   createStatus,
   CACHE_TTL
 } from '../refresh.js';
+
+import { classifyQuery } from '../search.js';
+
+import {
+  formatAgo,
+  formatBtc,
+  formatNumber,
+  formatTime,
+  formatVsize
+} from '../format.js';
+
+import { now } from './DataStatus.js';
+
+// Confirmation targets worth showing, out of the ~28 Esplora returns.
+const FEE_TARGETS = [1, 3, 6, 12, 24, 144, 504, 1008];
+
+function etaLabel(blocks) {
+  const minutes = blocks * 10;
+  if (minutes < 60) return `~${minutes} min`;
+  if (minutes < 24 * 60) return `~${Math.round(minutes / 60)} h`;
+  const days = minutes / (24 * 60);
+  if (days === 1) return '~1 day';
+  if (days === 7) return '~1 week';
+  return `~${+days.toFixed(1)} days`;
+}
 
 export default {
 
@@ -26,14 +50,19 @@ export default {
 
     <h2>Bitcoin Explorer</h2>
 
-    <input
-      v-model="query"
-      placeholder="Block hash / txid / address"
-    >
-
-    <button @click="search" :disabled="searching">
-      {{ searching ? 'Searching…' : 'Search' }}
-    </button>
+    <form class="search" @submit.prevent="search" role="search">
+      <input
+        v-model="query"
+        placeholder="Block height, block hash, transaction id or address"
+        aria-label="Search"
+        autocomplete="off"
+        spellcheck="false"
+        @input="searchError = ''"
+      >
+      <button type="submit" :disabled="searching">
+        {{ searching ? 'Searching…' : 'Search' }}
+      </button>
+    </form>
 
     <div v-if="searchError" class="notice notice-error" style="margin-top:10px">
       {{ searchError }}
@@ -62,22 +91,16 @@ export default {
 
     <data-status :status="latestStatus" what="block"></data-status>
 
-    <template v-if="latest.id">
+    <dl v-if="latest.id" class="facts">
+      <dt>Height</dt>
+      <dd><router-link :to="'/block/' + latest.id">{{ formatNumber(latest.height) }}</router-link></dd>
 
-      <div>Height: {{ latest.height }}</div>
+      <dt>Hash</dt>
+      <dd class="hash"><router-link :to="'/block/' + latest.id">{{ latest.id }}</router-link></dd>
 
-      <div class="hash">
-        Hash:
-        <a :href="'#/block/' + latest.id">{{ latest.id }}</a>
-      </div>
-
-      <div>
-        Timestamp:
-        {{ latest.timestamp }}
-        ({{ new Date(latest.timestamp * 1000).toUTCString() }})
-      </div>
-
-    </template>
+      <dt>Mined</dt>
+      <dd>{{ formatTime(latest.timestamp) }} <span class="muted">({{ ago(latest.timestamp) }})</span></dd>
+    </dl>
 
   </div>
 
@@ -88,27 +111,26 @@ export default {
 
     <data-status :status="blocksStatus" what="block list"></data-status>
 
-    <table v-if="recentBlocks.length">
-
-      <thead>
-        <tr>
-          <th>Height</th>
-          <th>TX</th>
-          <th>Size (bytes)</th>
-          <th>Weight</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        <tr v-for="block in recentBlocks" :key="block.id">
-          <td>{{ block.height }}</td>
-          <td>{{ block.tx_count }}</td>
-          <td>{{ block.size }}</td>
-          <td>{{ block.weight }}</td>
-        </tr>
-      </tbody>
-
-    </table>
+    <div v-if="recentBlocks.length" class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Height</th>
+            <th>Mined</th>
+            <th class="num">Transactions</th>
+            <th class="num">Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="block in recentBlocks" :key="block.id">
+            <td><router-link :to="'/block/' + block.id">{{ formatNumber(block.height) }}</router-link></td>
+            <td :title="formatTime(block.timestamp)">{{ ago(block.timestamp) }}</td>
+            <td class="num">{{ formatNumber(block.tx_count) }}</td>
+            <td class="num">{{ (block.size / 1e6).toFixed(2) }} MB</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <div v-else-if="!blocksStatus.loading && !blocksStatus.error" class="empty">
       No recent blocks returned.
@@ -119,19 +141,22 @@ export default {
   <!-- MEMPOOL -->
   <div class="card">
 
-    <h2>Mempool State</h2>
+    <h2>Mempool</h2>
 
     <data-status :status="mempoolStatus" what="mempool"></data-status>
 
-    <template v-if="mempool.count !== undefined">
+    <dl v-if="mempool.count !== undefined" class="facts">
+      <dt>Pending transactions</dt>
+      <dd>{{ formatNumber(mempool.count) }}</dd>
 
-      <div>Pending TX: {{ mempool.count }} transactions</div>
+      <dt>Size</dt>
+      <dd>{{ formatVsize(mempool.vsize) }}
+        <span class="muted">(~{{ Math.ceil(mempool.vsize / 1e6) }} blocks' worth)</span>
+      </dd>
 
-      <div>Queue VSize: {{ mempool.vsize }} virtual bytes (vBytes)</div>
-
-      <div>Total Fees: {{ mempool.total_fee }} satoshis (sats)</div>
-
-    </template>
+      <dt>Total fees</dt>
+      <dd>{{ formatBtc(mempool.total_fee) }}</dd>
+    </dl>
 
   </div>
 
@@ -142,23 +167,25 @@ export default {
 
     <data-status :status="feesStatus" what="fee estimate"></data-status>
 
-    <table v-if="Object.keys(fees).length">
-
-      <thead>
-        <tr>
-          <th>Target</th>
-          <th>sat/vB</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        <tr v-for="(fee, target) in fees" :key="target">
-          <td>{{ target }} blocks</td>
-          <td>{{ fee }}</td>
-        </tr>
-      </tbody>
-
-    </table>
+    <div v-if="feeRows.length" class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Confirm within</th>
+            <th class="num">Fee rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in feeRows" :key="row.target">
+            <td>
+              {{ row.target }} {{ row.target === 1 ? 'block' : 'blocks' }}
+              <span class="muted">({{ row.eta }})</span>
+            </td>
+            <td class="num">{{ row.rate.toFixed(1) }} sat/vB</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <div v-else-if="!feesStatus.loading && !feesStatus.error" class="empty">
       No fee estimates available.
@@ -201,45 +228,74 @@ export default {
       latestStatus: createStatus(),
       blocksStatus: createStatus(),
       mempoolStatus: createStatus(),
-      feesStatus: createStatus(),
-
-      histogramChart: null
+      feesStatus: createStatus()
     };
   },
 
+  computed: {
+    feeRows() {
+      return FEE_TARGETS
+        .filter(t => typeof this.fees[t] === 'number')
+        .map(t => ({ target: t, eta: etaLabel(t), rate: this.fees[t] }));
+    }
+  },
+
   methods: {
+
+    formatBtc,
+    formatNumber,
+    formatTime,
+    formatVsize,
+
+    ago(unixSeconds) {
+      return formatAgo(unixSeconds * 1000, now.value);
+    },
 
     // =================================================
     // SEARCH
     // =================================================
 
     async search() {
-      const q = this.query.trim();
-
-      if (!q) {
-        return;
-      }
+      const result = classifyQuery(this.query);
 
       this.searchError = '';
 
-      if (q.length !== 64) {
-        this.$router.push('/address/' + q);
+      if (result.type === 'invalid') {
+        this.searchError = result.reason;
         return;
       }
 
-      // A 64-char hex string is either a block hash or a txid.
+      if (result.type === 'address') {
+        this.$router.push('/address/' + result.address);
+        return;
+      }
+
+      if (result.type === 'hash' && !result.likelyBlock) {
+        this.$router.push('/tx/' + result.hash);
+        return;
+      }
+
       this.searching = true;
 
       try {
-        const block = await tryGetBlock(q);
+        if (result.type === 'height') {
+          const hash = await getBlockHash(result.height);
+          this.$router.push('/block/' + hash);
+          return;
+        }
 
-        this.$router.push(
-          (block ? '/block/' : '/tx/') + q
-        );
+        // Looks like a block hash; confirm before routing.
+        const block = await tryGetBlock(result.hash);
+        this.$router.push((block ? '/block/' : '/tx/') + result.hash);
+
       } catch (err) {
-        this.searchError =
-          "Couldn't reach any Bitcoin data provider to look this up. " +
-          'Please try again in a moment.';
+        if (err instanceof ApiError && err.kind === 'not_found') {
+          this.searchError = `There is no block at height ${formatNumber(result.height)} yet.`;
+        } else {
+          this.searchError =
+            "Couldn't reach any Bitcoin data provider to look this up. " +
+            'Please try again in a moment.';
+        }
       } finally {
         this.searching = false;
       }
@@ -252,11 +308,7 @@ export default {
     async loadLatestBlock() {
       const tip = await getTipHeight();
       const hash = await getBlockHash(tip);
-      const block = await getBlock(hash);
-
-      await put('blocks', block);
-
-      return block;
+      return await getBlock(hash);
     },
 
     loadMempool() {
@@ -359,9 +411,6 @@ export default {
 
   unmounted() {
     (this.refreshers || []).forEach(r => r.stop());
-
-    if (this.histogramChart) {
-      this.histogramChart.destroy();
-    }
+    this.histogramChart?.destroy();
   }
 };

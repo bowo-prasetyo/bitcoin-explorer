@@ -1,12 +1,23 @@
 import { getTx } from '../api.js';
 
-import { put } from '../db.js';
-
 import {
   createSmartRefresher,
   createStatus,
   CACHE_TTL
 } from '../refresh.js';
+
+import {
+  formatAgo,
+  formatBtc,
+  formatFeeRate,
+  formatNumber,
+  formatSats,
+  formatTime,
+  sumValues,
+  vsizeFromWeight
+} from '../format.js';
+
+import { now } from './DataStatus.js';
 
 export default {
 
@@ -21,48 +32,91 @@ export default {
 
       <data-status :status="status" what="transaction"></data-status>
 
-      <template v-if="tx">
+      <dl v-if="tx" class="facts">
 
-        <div>Fee: {{ tx.fee }} satoshis (sats)</div>
+        <dt>Status</dt>
+        <dd v-if="tx.status.confirmed">
+          <span class="tag tag-ok">Confirmed</span>
+          in block
+          <router-link :to="'/block/' + tx.status.block_hash">
+            {{ formatNumber(tx.status.block_height) }}
+          </router-link>
+        </dd>
+        <dd v-else>
+          <span class="tag tag-pending">Unconfirmed</span>
+          waiting in the mempool
+        </dd>
 
-        <div>Weight: {{ tx.weight }}</div>
+        <template v-if="tx.status.confirmed">
+          <dt>Time</dt>
+          <dd>
+            {{ formatTime(tx.status.block_time) }}
+            <span class="muted">({{ ago(tx.status.block_time) }})</span>
+          </dd>
+        </template>
 
-        <div>Confirmed: {{ tx.status.confirmed }}</div>
+        <dt>Output total</dt>
+        <dd>{{ formatBtc(totalOut) }}</dd>
 
-        <div v-if="tx.status.block_height">
-          Block Height: {{ tx.status.block_height }}
-        </div>
+        <template v-if="!isCoinbase">
+          <dt>Fee</dt>
+          <dd>
+            {{ formatBtc(tx.fee) }}
+            <span class="muted">({{ formatSats(tx.fee) }})</span>
+          </dd>
 
-      </template>
+          <dt>Fee rate</dt>
+          <dd>{{ formatFeeRate(tx.fee, tx.weight) }}</dd>
+        </template>
+
+        <dt>Size</dt>
+        <dd>
+          {{ formatNumber(vsizeFromWeight(tx.weight)) }} vB
+          <span class="muted">({{ formatNumber(tx.weight) }} WU)</span>
+        </dd>
+
+      </dl>
 
     </div>
 
-    <template v-if="tx">
+    <div class="io" v-if="tx">
 
       <div class="card">
 
-        <h3>Inputs</h3>
+        <h3>
+          Inputs ({{ tx.vin.length }})
+          <span class="muted small" v-if="!isCoinbase">{{ formatBtc(totalIn) }}</span>
+        </h3>
 
-        <div v-if="tx.vin.length === 0" class="empty">
-          No inputs
-        </div>
+        <div v-if="tx.vin.length === 0" class="empty">No inputs</div>
 
-        <div v-for="(vin, index) in tx.vin" :key="index">
+        <div v-for="(vin, index) in tx.vin" :key="index" class="io-row">
 
-          <div v-if="vin.is_coinbase" class="hash">
-            Coinbase (newly minted coins)
+          <div class="io-main">
+            <div v-if="vin.is_coinbase">
+              <span class="tag">coinbase</span> newly minted coins and fees
+            </div>
+
+            <router-link
+              v-else-if="vin.prevout?.scriptpubkey_address"
+              class="hash"
+              :to="'/address/' + vin.prevout.scriptpubkey_address"
+            >{{ vin.prevout.scriptpubkey_address }}</router-link>
+
+            <div v-else class="empty">
+              No address ({{ vin.prevout?.scriptpubkey_type || 'non-standard' }} script)
+            </div>
+
+            <router-link
+              v-if="!vin.is_coinbase && vin.txid"
+              class="small muted"
+              :to="'/tx/' + vin.txid"
+              :title="'Output ' + vin.vout + ' of ' + vin.txid"
+            >from {{ vin.txid?.slice(0, 8) }}…:{{ vin.vout }}</router-link>
           </div>
 
-          <router-link
-            v-else-if="vin.prevout?.scriptpubkey_address"
-            class="hash"
-            :to="'/address/' + vin.prevout.scriptpubkey_address"
-          >
-            {{ vin.prevout.scriptpubkey_address }}
-          </router-link>
-
-          <div v-else class="hash empty">
-            No address (non-standard script)
+          <div class="io-amount" v-if="!vin.is_coinbase">
+            {{ formatBtc(vin.prevout?.value) }}
           </div>
 
         </div>
@@ -71,35 +125,38 @@ export default {
 
       <div class="card">
 
-        <h3>Outputs</h3>
+        <h3>
+          Outputs ({{ tx.vout.length }})
+          <span class="muted small">{{ formatBtc(totalOut) }}</span>
+        </h3>
 
-        <div v-if="tx.vout.length === 0" class="empty">
-          No outputs
-        </div>
+        <div v-if="tx.vout.length === 0" class="empty">No outputs</div>
 
-        <div v-for="(vout, index) in tx.vout" :key="index">
+        <div v-for="(vout, index) in tx.vout" :key="index" class="io-row">
 
-          <router-link
-            v-if="vout.scriptpubkey_address"
-            class="hash"
-            :to="'/address/' + vout.scriptpubkey_address"
-          >
-            {{ vout.scriptpubkey_address }}
-          </router-link>
+          <div class="io-main">
+            <router-link
+              v-if="vout.scriptpubkey_address"
+              class="hash"
+              :to="'/address/' + vout.scriptpubkey_address"
+            >{{ vout.scriptpubkey_address }}</router-link>
 
-          <div v-else-if="vout.scriptpubkey_type === 'op_return'" class="hash empty">
-            OP_RETURN (data, no address)
+            <div v-else-if="vout.scriptpubkey_type === 'op_return'" class="empty">
+              OP_RETURN (data, no address)
+            </div>
+
+            <div v-else class="empty">
+              No address ({{ vout.scriptpubkey_type || 'non-standard' }} script)
+            </div>
           </div>
 
-          <div v-else class="hash empty">
-            No address ({{ vout.scriptpubkey_type || 'non-standard' }} script)
-          </div>
+          <div class="io-amount">{{ formatBtc(vout.value) }}</div>
 
         </div>
 
       </div>
 
-    </template>
+    </div>
 
   </div>
   `,
@@ -112,13 +169,34 @@ export default {
     };
   },
 
+  computed: {
+    isCoinbase() {
+      return !!this.tx?.vin?.[0]?.is_coinbase;
+    },
+
+    totalIn() {
+      return sumValues(this.tx?.vin, v => v.prevout?.value);
+    },
+
+    totalOut() {
+      return sumValues(this.tx?.vout);
+    }
+  },
+
   methods: {
-    async loadTransaction() {
-      const tx = await getTx(this.txid);
+    formatBtc,
+    formatFeeRate,
+    formatNumber,
+    formatSats,
+    formatTime,
+    vsizeFromWeight,
 
-      await put('txs', tx);
+    ago(unixSeconds) {
+      return formatAgo(unixSeconds * 1000, now.value);
+    },
 
-      return tx;
+    loadTransaction() {
+      return getTx(this.txid);
     }
   },
 

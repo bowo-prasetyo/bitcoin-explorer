@@ -1,16 +1,27 @@
 import {
   getBlock,
+  getBlockHash,
   getBlockTxs,
-  getTipHeight
+  getTipHeight,
+  BLOCK_TXS_PAGE_SIZE
 } from '../api.js';
-
-import { put } from '../db.js';
 
 import {
   createSmartRefresher,
   createStatus,
   CACHE_TTL
 } from '../refresh.js';
+
+import {
+  formatAgo,
+  formatBtc,
+  formatFeeRate,
+  formatNumber,
+  formatTime,
+  sumValues
+} from '../format.js';
+
+import { now } from './DataStatus.js';
 
 export default {
 
@@ -19,43 +30,96 @@ export default {
 
     <div class="card">
 
-      <h2>Block</h2>
+      <nav class="pager" v-if="block" aria-label="Neighbouring blocks">
+        <router-link v-if="block.previousblockhash" :to="'/block/' + block.previousblockhash">
+          ‹ Block {{ formatNumber(block.height - 1) }}
+        </router-link>
+        <span v-else class="muted">Genesis block</span>
+
+        <router-link v-if="nextHash" :to="'/block/' + nextHash">
+          Block {{ formatNumber(block.height + 1) }} ›
+        </router-link>
+        <span v-else-if="tipHeight !== null" class="muted">Chain tip</span>
+      </nav>
+
+      <h2>Block <span v-if="block">{{ formatNumber(block.height) }}</span></h2>
 
       <div class="hash">{{ hash }}</div>
 
       <data-status :status="status" what="block"></data-status>
 
-      <template v-if="block">
+      <dl v-if="block" class="facts">
+        <dt>Mined</dt>
+        <dd>{{ formatTime(block.timestamp) }} <span class="muted">({{ ago(block.timestamp) }})</span></dd>
 
-        <div>Height: {{ block.height }}</div>
+        <dt>Confirmations</dt>
+        <dd>{{ confirmations === null ? '…' : formatNumber(confirmations) }}</dd>
 
-        <div>
-          Timestamp:
-          {{ block.timestamp }}
-          ({{ new Date(block.timestamp * 1000).toUTCString() }})
-        </div>
+        <dt>Transactions</dt>
+        <dd>{{ formatNumber(block.tx_count) }}</dd>
 
-        <div>Transactions: {{ block.tx_count }}</div>
+        <dt>Size</dt>
+        <dd>{{ formatNumber(block.size) }} bytes</dd>
 
-        <div>Confirmations: {{ confirmations }}</div>
-
-      </template>
+        <dt>Weight</dt>
+        <dd>{{ formatNumber(block.weight) }} WU</dd>
+      </dl>
 
     </div>
 
     <div class="card" v-if="block">
 
-      <h3>Transactions</h3>
+      <h3>
+        Transactions
+        <span class="muted small" v-if="block.tx_count">
+          {{ formatNumber(firstIndex + 1) }}–{{ formatNumber(lastIndex) }}
+          of {{ formatNumber(block.tx_count) }}
+        </span>
+      </h3>
 
-      <div v-if="txs.length === 0" class="empty">
-        No transactions returned for this block.
+      <data-status :status="txsStatus" what="page of transactions"></data-status>
+
+      <div v-if="txs.length" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="num">#</th>
+              <th>Transaction</th>
+              <th class="num">Output total</th>
+              <th class="num">Fee rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(tx, i) in txs" :key="tx.txid">
+              <td class="num muted">{{ formatNumber(firstIndex + i + 1) }}</td>
+              <td class="hash">
+                <router-link :to="'/tx/' + tx.txid">{{ tx.txid }}</router-link>
+              </td>
+              <td class="num">{{ formatBtc(sumValues(tx.vout)) }}</td>
+              <td class="num">
+                <span v-if="tx.vin?.[0]?.is_coinbase" class="tag">coinbase</span>
+                <span v-else>{{ formatFeeRate(tx.fee, tx.weight) }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <div v-for="tx in txs" :key="tx.txid">
-        <router-link class="hash" :to="'/tx/' + tx.txid">
-          {{ tx.txid }}
-        </router-link>
+      <div v-else-if="!txsStatus.loading && !txsStatus.error" class="empty">
+        No transactions on this page.
       </div>
+
+      <nav class="pager" v-if="pageCount > 1" aria-label="Transaction pages">
+        <span>
+          <router-link v-if="page > 1" :to="pageLink(1)">« First</router-link>
+          <router-link v-if="page > 1" :to="pageLink(page - 1)">‹ Previous</router-link>
+        </span>
+        <span class="muted">Page {{ formatNumber(page) }} of {{ formatNumber(pageCount) }}</span>
+        <span>
+          <router-link v-if="page < pageCount" :to="pageLink(page + 1)">Next ›</router-link>
+          <router-link v-if="page < pageCount" :to="pageLink(pageCount)">Last »</router-link>
+        </span>
+      </nav>
 
     </div>
 
@@ -65,10 +129,13 @@ export default {
   data() {
     return {
       hash: '',
+      page: 1,
       block: null,
-      txs: [],
       tipHeight: null,
-      status: createStatus()
+      nextHash: null,
+      txs: [],
+      status: createStatus(),
+      txsStatus: createStatus()
     };
   },
 
@@ -76,51 +143,111 @@ export default {
     // Derived from cached data too, so it's right on a cache-first render.
     confirmations() {
       if (!this.block || this.tipHeight === null) {
-        return '…';
+        return null;
       }
       return this.tipHeight - this.block.height + 1;
+    },
+
+    pageCount() {
+      return this.block
+        ? Math.max(1, Math.ceil(this.block.tx_count / BLOCK_TXS_PAGE_SIZE))
+        : 1;
+    },
+
+    firstIndex() {
+      return (this.page - 1) * BLOCK_TXS_PAGE_SIZE;
+    },
+
+    lastIndex() {
+      return Math.min(
+        this.firstIndex + BLOCK_TXS_PAGE_SIZE,
+        this.block?.tx_count ?? 0
+      );
     }
   },
 
   methods: {
+    formatBtc,
+    formatFeeRate,
+    formatNumber,
+    formatTime,
+    sumValues,
+
+    ago(unixSeconds) {
+      return formatAgo(unixSeconds * 1000, now.value);
+    },
+
+    pageLink(page) {
+      return page === 1
+        ? '/block/' + this.hash
+        : { path: '/block/' + this.hash, query: { page } };
+    },
+
     async loadBlockData() {
-      const [block, txs, tipHeight] = await Promise.all([
+      const [block, tipHeight] = await Promise.all([
         getBlock(this.hash),
-        getBlockTxs(this.hash),
         getTipHeight()
       ]);
 
-      await put('blocks', block);
+      const nextHash = tipHeight > block.height
+        ? await getBlockHash(block.height + 1)
+        : null;
 
-      return { block, txs, tipHeight };
+      return { block, tipHeight, nextHash };
+    },
+
+    loadTxPage() {
+      return getBlockTxs(this.hash, this.firstIndex);
     }
   },
 
   mounted() {
     this.hash = this.$route.params.hash;
 
-    this.refresher = createSmartRefresher({
-      cacheKey: 'block-' + this.hash,
-      cacheTTL: CACHE_TTL.block,
-      fetchFn: this.loadBlockData,
-      status: this.status,
+    const requested = parseInt(this.$route.query.page, 10);
+    this.page = Number.isFinite(requested) && requested > 0 ? requested : 1;
 
-      onUpdate: data => {
-        this.block = data.block;
-        this.txs = data.txs;
-        this.tipHeight = data.tipHeight ?? null;
-      },
+    this.refreshers = [
 
-      // Confirmation count only matters while the block is new.
-      shouldStop: () =>
-        typeof this.confirmations === 'number' &&
-        this.confirmations >= 3
-    });
+      createSmartRefresher({
+        cacheKey: 'block-' + this.hash,
 
-    this.refresher.start();
+        cacheTTL: data =>
+          data?.tipHeight - data?.block?.height >= 6
+            ? CACHE_TTL.blockDeep
+            : CACHE_TTL.block,
+
+        fetchFn: this.loadBlockData,
+        status: this.status,
+
+        onUpdate: data => {
+          this.block = data.block;
+          this.tipHeight = data.tipHeight ?? null;
+          this.nextHash = data.nextHash ?? null;
+        },
+
+        // Once a successor exists and the block is a few deep, the only
+        // thing left changing is the confirmation count.
+        shouldStop: () =>
+          this.nextHash !== null &&
+          this.confirmations !== null &&
+          this.confirmations >= 3
+      }),
+
+      createSmartRefresher({
+        cacheKey: `block-txs-${this.hash}-${this.firstIndex}`,
+        cacheTTL: CACHE_TTL.blockTxs,
+        fetchFn: this.loadTxPage,
+        status: this.txsStatus,
+        poll: false,
+        onUpdate: data => { this.txs = data; }
+      })
+    ];
+
+    this.refreshers.forEach(r => r.start());
   },
 
   unmounted() {
-    this.refresher?.stop();
+    (this.refreshers || []).forEach(r => r.stop());
   }
 };

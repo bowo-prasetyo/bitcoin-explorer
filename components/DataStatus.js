@@ -3,26 +3,13 @@
 // cache, or why it couldn't be loaded. Pair with createStatus() from
 // refresh.js.
 
+import { formatAgo } from '../format.js';
+
 const { ref, computed } = Vue;
 
-// One shared clock for every "x min ago" label.
-const now = ref(Date.now());
+// One shared clock for every "x min ago" label; views import it too.
+export const now = ref(Date.now());
 setInterval(() => { now.value = Date.now(); }, 5000);
-
-export function formatAgo(timestamp, nowMs = Date.now()) {
-  const s = Math.max(0, Math.round((nowMs - timestamp) / 1000));
-
-  if (s < 10) return 'just now';
-  if (s < 60) return `${s}s ago`;
-
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-
-  const h = Math.round(m / 60);
-  if (h < 48) return `${h} h ago`;
-
-  return new Date(timestamp).toLocaleString();
-}
 
 export default {
 
