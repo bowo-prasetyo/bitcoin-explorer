@@ -1,15 +1,17 @@
 import { getMempool } from '../api.js';
 
 import {
-  createSmartRefresher
+  createSmartRefresher,
+  createStatus,
+  CACHE_TTL
 } from '../refresh.js';
 
-import {
-  get,
-  put
-} from '../db.js';
+import { get, put } from '../db.js';
 
 const { markRaw } = Vue;
+
+const HISTORY_KEY = 'mempool-chart-history';
+const HISTORY_LIMIT = 50;
 
 export default {
 
@@ -18,11 +20,20 @@ export default {
 
     <div class="card">
 
-      <h2>
-        Mempool Visualization
-      </h2>
+      <h2>Mempool Transaction Count</h2>
 
-      <canvas id="feeChart"></canvas>
+      <p class="muted small">
+        Sampled by this browser while this page is open, so gaps mean the
+        page was closed, not that the mempool was quiet.
+      </p>
+
+      <data-status :status="status" what="mempool"></data-status>
+
+      <div v-if="!status.loading && history.length === 0" class="empty">
+        No samples recorded yet.
+      </div>
+
+      <canvas id="mempoolCountChart"></canvas>
 
     </div>
 
@@ -30,144 +41,64 @@ export default {
   `,
 
   data() {
-
     return {
-
-      chart: null,
-
       history: [],
-
-      refresher: null
+      status: createStatus()
     };
   },
 
   methods: {
 
-    // ===============================================
-    // LOAD MEMPOOL DATA
-    // ===============================================
-
     async loadMempoolData() {
-
-      const mempool =
-        await getMempool();
+      const mempool = await getMempool();
 
       const point = {
-
-        timestamp:
-          new Date()
-            .toLocaleTimeString(),
-
-        count:
-          mempool.count,
-
-        vsize:
-          mempool.vsize,
-
-        total_fee:
-          mempool.total_fee
+        timestamp: new Date().toLocaleTimeString(),
+        count: mempool.count,
+        vsize: mempool.vsize,
+        total_fee: mempool.total_fee
       };
 
-      // Keep rolling history
-      this.history.push({
-      
-        timestamp:
-          point.timestamp,
-      
-        count:
-          point.count,
-      
-        vsize:
-          point.vsize,
-      
-        total_fee:
-          point.total_fee
-      
-      });
-            
-      // Limit chart size
-      if (this.history.length > 50) {
+      this.history.push(point);
 
+      if (this.history.length > HISTORY_LIMIT) {
         this.history.shift();
       }
 
-      // Persist history
       await put('cache', {
-
-        id: 'mempool-chart-history',
-
+        id: HISTORY_KEY,
         timestamp: Date.now(),
-
-        data: JSON.parse(
-          JSON.stringify(this.history)
-        )
-        
+        data: JSON.parse(JSON.stringify(this.history))
       });
 
       return point;
     },
 
-    // ===============================================
-    // UPDATE CHART
-    // ===============================================
-
     updateChart() {
-
       if (!this.chart) {
         return;
       }
 
-      this.chart.data.labels =
-
-        this.history.map(
-          p => p.timestamp
-        );
-
-      this.chart.data.datasets[0].data =
-
-        this.history.map(
-          p => p.count
-        );
-
+      this.chart.data.labels = this.history.map(p => p.timestamp);
+      this.chart.data.datasets[0].data = this.history.map(p => p.count);
       this.chart.update();
     },
 
-    // ===============================================
-    // CREATE CHART
-    // ===============================================
-
     createChart() {
-    
-      const ctx =
-        document
-          .getElementById(
-            'feeChart'
-          );
-    
+      const ctx = document.getElementById('mempoolCountChart');
+
       this.chart = markRaw(
-    
         new Chart(ctx, {
-    
           type: 'line',
-    
           data: {
-    
             labels: [],
-    
             datasets: [{
-    
-              label:
-                'Mempool TX Count',
-    
+              label: 'Mempool TX Count',
               data: []
-    
             }]
           },
-    
           options: {
-    
             responsive: true,
-    
             animation: false
           }
         })
@@ -176,79 +107,28 @@ export default {
   },
 
   async mounted() {
-
-    // ===============================================
-    // CREATE CHART
-    // ===============================================
-
     this.createChart();
 
-    // ===============================================
-    // LOAD HISTORY CACHE
-    // ===============================================
-
-    const cached =
-      await get(
-        'cache',
-        'mempool-chart-history'
-      );
+    const cached = await get('cache', HISTORY_KEY).catch(() => null);
 
     if (cached?.data) {
-
-      this.history =
-        cached.data;
-
+      this.history = cached.data;
       this.updateChart();
     }
 
-    // ===============================================
-    // START SMART REFRESH
-    // ===============================================
-
-    this.refresher =
-      createSmartRefresher({
-
-        cacheKey:
-          'mempool-chart-live',
-
-        cacheTTL:
-          10000,
-
-        fetchFn:
-          this.loadMempoolData,
-
-        onUpdate:
-          (data, cached) => {
-
-            this.updateChart();
-
-            console.log(
-
-              cached
-                ? 'Chart from cache'
-                : 'Chart from network'
-
-            );
-          }
-      });
+    this.refresher = createSmartRefresher({
+      cacheKey: 'mempool-chart-live',
+      cacheTTL: CACHE_TTL.mempool,
+      fetchFn: this.loadMempoolData,
+      status: this.status,
+      onUpdate: () => this.updateChart()
+    });
 
     this.refresher.start();
   },
 
   unmounted() {
-
-    // Stop refresher
-
-    if (this.refresher) {
-
-      this.refresher.stop();
-    }
-
-    // Destroy chart properly
-
-    if (this.chart) {
-
-      this.chart.destroy();
-    }
+    this.refresher?.stop();
+    this.chart?.destroy();
   }
 };

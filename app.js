@@ -2,6 +2,7 @@
 
 import router from './router.js';
 import { initDB } from './db.js';
+import DataStatus from './components/DataStatus.js';
 
 const App = {
   template: `
@@ -18,31 +19,33 @@ const App = {
   `
 };
 
+function showFatalError(err) {
+  const box = document.createElement('div');
+  box.style.cssText = 'padding:20px;font-family:Arial';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Application failed to start';
+
+  const detail = document.createElement('pre');
+  detail.textContent = String(err?.message || err);
+
+  box.append(title, detail);
+  document.body.replaceChildren(box);
+}
+
 async function bootstrap() {
   try {
-    // Initialize IndexedDB
     await initDB();
 
-    // Create Vue app
     const app = Vue.createApp(App);
 
-    // Register router
+    app.component('data-status', DataStatus);
     app.use(router);
-
-    // Mount application
     app.mount('#app');
-
-    console.log('Bitcoin Explorer initialized');
 
   } catch (err) {
     console.error('Bootstrap failed', err);
-
-    document.body.innerHTML = `
-      <div style="padding:20px;font-family:Arial">
-        <h2>Application failed to start</h2>
-        <pre>${err}</pre>
-      </div>
-    `;
+    showFatalError(err);
   }
 }
 
