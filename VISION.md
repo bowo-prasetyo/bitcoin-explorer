@@ -103,6 +103,13 @@ transaction.
   block pages once the headers are cached, and alongside the total-work
   check on the home page.
 
+### Live updates ✅
+
+- New blocks are announced over one shared WebSocket, used only as a hint
+  to fetch and verify through the normal path. It replaces fast polling of
+  the tip and of pending transactions, is opened only while needed, backs
+  off politely, and falls back to polling.
+
 ### Next ideas
 
 - Link every header inside each period. That needs all ~925,000 headers
@@ -111,7 +118,6 @@ transaction.
 
 ### Later
 
-- Live updates over WebSocket.
 - Installable PWA with offline support.
 - Historical charts.
 
