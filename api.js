@@ -41,6 +41,8 @@ export class ApiError extends Error {
 // SETTINGS (custom provider)
 // =====================================================
 
+// Storage keys predate the name Assay; renaming them would silently drop
+// visitors' saved settings (e.g. their own endpoint).
 const BEST_NODE_KEY = 'btc_explorer_best_node';
 const CUSTOM_KEY = 'btc_explorer_custom_provider';
 

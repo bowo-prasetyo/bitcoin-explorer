@@ -1,7 +1,11 @@
-# bitcoin-explorer
+# Assay
 
 A Bitcoin explorer that runs entirely in your browser, built toward
 **verifying** blockchain data rather than trusting it.
+
+To *assay* is to test a metal independently to find out whether it is what
+it claims to be. Assay does the same for Bitcoin data: it checks what public
+APIs say before it shows it.
 
 It is a static site (Vue, Vue Router, Chart.js, IndexedDB) that reads from
 public Esplora APIs. There is no backend; it can be hosted on GitHub Pages
