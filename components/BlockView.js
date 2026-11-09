@@ -24,6 +24,7 @@ import {
 import { now } from './DataStatus.js';
 
 import {
+  verifyBlockDifficulty,
   verifyBlockHeader,
   verifyBlockTransactions
 } from '../verify.js';
@@ -71,6 +72,7 @@ export default {
       </dl>
 
       <verify-badge v-if="block" :result="headerCheck"></verify-badge>
+      <verify-badge v-if="block" :result="difficultyCheck"></verify-badge>
 
     </div>
 
@@ -147,6 +149,7 @@ export default {
       txsStatus: createStatus(),
 
       headerCheck: null,
+      difficultyCheck: null,
       txListCheck: null,
       txListStarted: false,
       verifiedBlockId: null
@@ -203,8 +206,9 @@ export default {
         getTipHeight()
       ]);
 
+      // A missing "next block" link shouldn't hide the block itself.
       const nextHash = tipHeight > block.height
-        ? await getBlockHash(block.height + 1)
+        ? await getBlockHash(block.height + 1).catch(() => null)
         : null;
 
       return { block, tipHeight, nextHash };
@@ -222,8 +226,15 @@ export default {
 
       this.verifiedBlockId = this.block.id;
       this.headerCheck = null;
+      this.difficultyCheck = null;
       this.headerCheck = await verifyBlockHeader(this.block);
       this.verifyTxList();
+
+      this.difficultyCheck = await verifyBlockDifficulty(
+        this.block,
+        this.headerCheck.header,
+        this.tipHeight
+      );
     },
 
     async verifyTxList() {

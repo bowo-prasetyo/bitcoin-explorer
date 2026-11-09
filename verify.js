@@ -20,6 +20,7 @@
 //   }
 
 import {
+  getBlockHash,
   getBlockHeader,
   getBlockTxids,
   getTxHex,
@@ -37,6 +38,8 @@ import {
 } from './spv.js';
 
 import { compareTips } from './consensus.js';
+
+import { headersNeeded, checkDifficulty } from './difficulty.js';
 
 import { get, put } from './db.js';
 
@@ -157,6 +160,7 @@ export async function verifyBlockHeader(block) {
       {
         facts: powFacts(pow),
         merkleRoot: h.merkleRoot,
+        header: ok ? h : null,
         note: ok
           ? 'Checks this block on its own. It does not prove the block is on the ' +
             'chain with the most work; see the tip check on the home page.'
@@ -165,6 +169,98 @@ export async function verifyBlockHeader(block) {
     );
   } catch (err) {
     return errorResult("Couldn't check proof of work", err);
+  }
+}
+
+// Header at `height`, proof of work verified. Headers at least six blocks
+// below the tip are reused from the local cache by height (no request);
+// they are re-verified every time all the same.
+const DEEP = 6;
+
+async function loadHeaderAtHeight(height, tipHeight, useCache) {
+  if (useCache && tipHeight !== null && tipHeight - height >= DEEP) {
+    const cached = await get('headers', height).catch(() => null);
+
+    if (cached) {
+      const pow = await verifyHeaderPoW(cached.hex, cached.hash);
+      if (pow.ok) {
+        return { hash: cached.hash, pow };
+      }
+    }
+  }
+
+  const hash = await getBlockHash(height);
+  const { pow } = await loadVerifiedHeader(hash, height);
+  return { hash, pow };
+}
+
+async function runDifficultyCheck(block, header, tipHeight, useCache) {
+  const heights = headersNeeded(block.height);
+
+  const loaded = await Promise.all(
+    heights.map(h => loadHeaderAtHeight(h, tipHeight, useCache))
+  );
+
+  const headers = {};
+  heights.forEach((h, i) => {
+    const { hash, pow } = loaded[i];
+    headers[h] = {
+      hash,
+      bits: pow.header.bits,
+      timestamp: pow.header.timestamp,
+      previousBlockHash: pow.header.previousBlockHash,
+      powOk: pow.ok
+    };
+  });
+
+  return checkDifficulty(
+    {
+      height: block.height,
+      hash: block.id,
+      // From the verified header, not the provider's JSON.
+      bits: header.bits,
+      previousBlockHash: header.previousBlockHash
+    },
+    headers
+  );
+}
+
+// That the block's difficulty is the one Bitcoin's rules require at its
+// height. `header` is the block's own header from verifyBlockHeader.
+export async function verifyBlockDifficulty(block, header, tipHeight = null) {
+  if (!header) {
+    return result('error', 'Difficulty needs a checked block header first');
+  }
+
+  try {
+    let r = await runDifficultyCheck(block, header, tipHeight, true);
+
+    // A cached header could be from a since-replaced block at the tip;
+    // never report a failure without checking against fresh headers.
+    if (!r.ok) {
+      r = await runDifficultyCheck(block, header, tipHeight, false);
+    }
+
+    const height = block.height.toLocaleString('en-US');
+
+    return result(
+      r.ok ? 'ok' : 'fail',
+      r.ok
+        ? `Difficulty is correct for block ${height}`
+        : 'Difficulty check FAILED',
+      r.checks,
+      {
+        facts: r.facts,
+        note: block.height < 2016
+          ? 'Every block in the first period has difficulty 1.'
+          : 'Checks one retarget step, from proof-of-work-checked headers. ' +
+            "The previous period's difficulty is taken from its headers rather " +
+            'than re-derived back to the genesis block, and blocks between the ' +
+            "period's start and this one aren't linked header by header."
+      }
+    );
+  } catch (err) {
+    return errorResult("Couldn't check the difficulty", err);
   }
 }
 
