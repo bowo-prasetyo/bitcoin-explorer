@@ -27,6 +27,20 @@ header .brand img {
   display: block;
 }
 
+/* Narrow phones: tighter spacing keeps the header on one line, and
+   wrapping is the fallback so nothing ever scrolls sideways. */
+@media (max-width: 400px) {
+  header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  header .brand {
+    margin-right: 0;
+  }
+}
+
 .container {
   padding: 20px;
 }
@@ -440,4 +454,19 @@ header .live-indicator.live-live {
 .live-toggle input {
   width: auto;
   margin: 0;
+}
+
+/* ---------- unverified data ---------- */
+
+/* Grey and dashed, unlike the solid badges of verified data. */
+.provider-note {
+  margin: 8px 0;
+  padding: 4px 10px;
+  border-left: 3px dashed #555;
+  color: #9a9a9a;
+}
+
+.provider-note strong {
+  color: #bdbdbd;
+  font-weight: normal;
 }

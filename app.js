@@ -4,6 +4,7 @@ import router from './router.js';
 import { initDB, pruneCache } from './db.js';
 import DataStatus from './components/DataStatus.js';
 import VerifyBadge from './components/VerifyBadge.js';
+import ProviderNote from './components/ProviderNote.js';
 import { liveFeed, liveCandidates } from './live.js';
 import { getProviderSettings } from './api.js';
 
@@ -18,9 +19,12 @@ const LIVE_LABELS = {
   disabled: ['Polling', 'Live updates are turned off (Providers page).']
 };
 
+// The user guide lives in the repository, next to the code it describes.
+const HELP_URL = 'https://github.com/bowo-prasetyo/bitcoin-explorer/blob/main/docs/user-guide.md';
+
 const App = {
   data() {
-    return { live: liveState };
+    return { live: liveState, HELP_URL };
   },
   computed: {
     liveLabel() { return LIVE_LABELS[this.live.status][0]; },
@@ -35,6 +39,7 @@ const App = {
       </router-link>
       <router-link to="/charts">Charts</router-link>
       <router-link to="/providers">Providers</router-link>
+      <a :href="HELP_URL" target="_blank" rel="noopener">Help</a>
       <router-link
         to="/providers"
         class="live-indicator"
@@ -79,6 +84,7 @@ async function bootstrap() {
 
     app.component('data-status', DataStatus);
     app.component('verify-badge', VerifyBadge);
+    app.component('provider-note', ProviderNote);
     app.use(router);
     app.mount('#app');
 

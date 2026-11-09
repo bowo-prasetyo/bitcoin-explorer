@@ -1,0 +1,348 @@
+# Assay user guide
+
+Assay is a Bitcoin explorer: you can look up blocks, transactions and
+addresses. Unlike most explorers, your browser **checks** much of what it
+shows instead of simply trusting the server that sent it. This guide
+explains how to use it and how to read what it tells you.
+
+You don't need to install anything or run a Bitcoin node. Open the
+[live site](https://bowo-prasetyo.github.io/bitcoin-explorer/) in any
+modern browser. Assay shows **Bitcoin mainnet** only, not testnet.
+
+Words in *italics* on first use are explained in the [glossary](glossary.md).
+
+**Contents**
+
+1. [A quick tour](#1-a-quick-tour)
+2. [Search](#2-search)
+3. [Reading the verification badges](#3-reading-the-verification-badges)
+4. [Common tasks](#4-common-tasks)
+5. [Use your own node](#5-use-your-own-node)
+6. [How fresh is the data?](#6-how-fresh-is-the-data)
+7. [Privacy: who sees your lookups](#7-privacy-who-sees-your-lookups)
+8. [Data stored in your browser](#8-data-stored-in-your-browser)
+9. [Troubleshooting](#9-troubleshooting)
+
+---
+
+## 1. A quick tour
+
+The header is the same on every page:
+
+| Item | What it does |
+|---|---|
+| **Assay** logo | Back to the home page. |
+| **Charts** | A chart of how many transactions are waiting to be confirmed. |
+| **Providers** | Which servers Assay asks for data, whether they agree, and where to add your own node. |
+| **Help** | Opens this guide. |
+| **● Live** / **Polling** | How Assay learns about new blocks. See [Live and polling](#live-and-polling). |
+
+The home page has these cards, top to bottom:
+
+| Card | What it shows |
+|---|---|
+| **Search** | Look up a block, transaction or address. |
+| **Legacy of Satoshi Nakamoto** | Links to the very first block, its transaction and its address. |
+| **Chain tip** | The newest block, and a badge saying whether the data providers agree on it. |
+| **Work behind the tip** | An optional check of all the work behind the chain. See [task 4.4](#44-check-the-whole-chain). |
+| **Recent blocks** | The latest blocks. Click a height to open the block. |
+| **Mempool** | Transactions waiting to be confirmed, and their total size and fees. |
+| **Fee estimates** | The fee rate likely to get a transaction confirmed within a given number of blocks. |
+| **Fee histogram** | How much waiting data pays each fee rate. |
+
+## 2. Search
+
+Type into the search box on the home page and press **Enter** (or click
+**Search**). You can enter:
+
+| You type | Example | Assay opens |
+|---|---|---|
+| A block height (a number) | `840000` | That block |
+| A block hash (64 hex characters) | `000000000019d6…` | That block |
+| A transaction id (64 hex characters) | `4a5e1e4baab8…` | That transaction |
+| A mainnet address | `1A1zP1…`, `bc1q…`, `bc1p…` | That address |
+
+Assay checks what you typed **before** sending anything, and tells you
+what is wrong instead of failing silently:
+
+| Message | What it means |
+|---|---|
+| *That looks like a testnet address.* | Assay only shows mainnet. Use a testnet explorer instead. |
+| *Block hashes and transaction ids are 64 hex characters; this one has N.* | A character is missing or extra. Copy it again. |
+| *N is too large to be a block height.* | Heights are much smaller numbers. |
+| *There is no block at height N yet.* | That block hasn't been mined yet. |
+| *Not a block height, block hash, transaction id or Bitcoin address.* | Check for typos. A `bc1` address must be all lower case or all upper case, not mixed. |
+
+## 3. Reading the verification badges
+
+Block and transaction pages show **badges**. Each badge is the result of
+one check that your browser ran itself, using raw data and cryptography.
+
+| Badge | Colour | Meaning |
+|---|---|---|
+| **✓** | Green | **Verified.** Every part of the check passed. |
+| **✗** | Red | **Failed.** The data doesn't add up. The title says which check failed. Treat this data with suspicion. |
+| **!** | Grey | **Couldn't check.** For example, no provider answered. This is never a pass, and it doesn't mean the data is wrong. |
+| **–** | Grey | **Nothing to check.** For example, a transaction that isn't in a block yet can't have an inclusion proof. |
+| **…** | Grey | **Checking.** The check is still running. |
+
+Click **What was checked** under a badge to see each individual check
+(with its own ✓ or ✗), the numbers involved, and a short note on what the
+check does **not** prove.
+
+### "Not verified" notes
+
+Some information can't be checked in a browser. Those panels carry a grey
+note with a dashed border that starts with **Not verified**. This
+includes:
+
+- address balances and history,
+- the mempool and fee estimates,
+- the recent-blocks list (open a block to check it).
+
+The note means the numbers are exactly what the data provider reported.
+
+### What a green ✓ does not mean
+
+A ✓ proves that the data is internally consistent and backed by real
+*proof of work*. It does **not** prove everything. For example, Assay
+can't prove that a block is on the chain with the most work, or that an
+address's coins are still unspent. The full list is in
+[What your browser verifies](verification.md).
+
+## 4. Common tasks
+
+### 4.1 Check that a payment was confirmed
+
+1. Search for the **transaction id**. Your wallet usually calls it
+   "transaction ID", "txid" or "hash".
+2. Look at **Status**:
+   - *in block 870,123* means it is confirmed. The block number is a link.
+   - *waiting in the mempool* means it is not confirmed yet. The page
+     updates by itself when it confirms.
+3. Check the **Transaction inclusion** badge. A green ✓ ("Inclusion in
+   block N verified") means your browser proved that this exact
+   transaction is inside that block, and that the block has valid proof
+   of work.
+4. To see how many blocks have been built on top, click the block number
+   and read **Confirmations**. Many people wait for 6.
+
+### 4.2 Check a transaction's amounts and fee
+
+On a transaction page:
+
+- The **transaction contents** badge proves that the raw transaction
+  matches its id, and that the outputs and inputs shown are really in it.
+- The **input amounts** badge downloads each earlier transaction that
+  this one spends from. It then checks each input's amount and address
+  and recalculates the fee. Each input gets its own ✓ or ✗. Hover over a
+  mark to see why.
+- For transactions that spend from more than **25** earlier transactions,
+  this check doesn't start by itself. Click **Check all inputs (N
+  downloads)** to run it.
+
+### 4.3 Check a block
+
+On a block page:
+
+- **Proof of work.** The header is real, it was hard to produce, and the
+  details shown match it.
+- **Difficulty.** The block's difficulty follows Bitcoin's rules for its
+  height. If the earlier headers are already saved in your browser, the
+  difficulty is also traced all the way back to the first block. If not,
+  click **Trace back to the genesis block (N headers)**.
+- **Transaction list.** Shown above each page of 25 transactions. It
+  proves that the complete list matches the block header, so no
+  transaction is missing, added or out of order.
+
+Use **‹ Block N** and **Block N ›** to step through neighbouring blocks.
+Use **« First**, **‹ Previous**, **Next ›** and **Last »** to page
+through the transactions.
+
+### 4.4 Check the whole chain
+
+The **Work behind the tip** card on the home page adds up all the proof
+of work behind the newest block.
+
+1. Click **Add up the total work**. The card shows how many headers this
+   downloads (about 80 bytes each, one or two per two weeks of history).
+2. Wait for the progress bar. Next time only new headers are downloaded,
+   and the check runs by itself.
+3. Two badges appear:
+   - **Total work behind block N** gives the work in hashes, how long all
+     miners would take to redo it, and a `chainwork` value.
+   - **Difficulty traced back to the genesis block** says every
+     difficulty change since 2009 followed the rules.
+
+If you run Bitcoin Core, compare the `chainwork` value with the output of
+`bitcoin-cli getblockchaininfo`. They should be identical for the same
+block.
+
+### 4.5 Check that the data providers agree
+
+Assay asks more than one *provider* for the newest block. The **Chain
+tip** card on the home page and **Do they agree?** on the **Providers**
+page show the result:
+
+| Title | Meaning |
+|---|---|
+| *All N providers agree on the tip* | Everyone reports the same newest block. |
+| *Providers agree; one is catching up* | One is a block or so behind on the same chain. This is normal. |
+| *Providers DISAGREE on the chain* | They report different chains. Be careful until this clears. |
+| *Only one provider configured / answered: nothing to compare* | There is nothing to compare. This is expected if you use only your own node. |
+
+### 4.6 Look up an address
+
+Search for the address. You see its balance, pending changes from
+unconfirmed transactions, totals received and sent, and its history with
+each transaction's effect on the balance (`+` received, `−` sent). Click
+**Load older transactions** to go further back.
+
+Address data is **not verified**. Proving a balance needs a full list of
+every unspent coin, which only a full node has. To avoid trusting a
+public provider, [use your own node](#5-use-your-own-node).
+
+## 5. Use your own node
+
+You can point Assay at an *Esplora* API that you run or trust. Common
+choices are [electrs](https://github.com/Blockstream/electrs) or a
+self-hosted mempool backend. Your lookups then go to your own server.
+
+**Before you start**, your endpoint must:
+
+- **answer from the browser.** It must send the
+  `Access-Control-Allow-Origin` (*CORS*) header.
+- **use `https://`.** Browsers block plain `http://` from the live site.
+  The only exceptions are `localhost` and `.onion` addresses opened in
+  Tor Browser.
+- **be the API path itself**, which often ends in `/api`, for example
+  `https://node.example.org/api`.
+
+**Steps**
+
+1. Click **Providers** in the header.
+2. In **Use your own endpoint**, enter the URL.
+3. Optional: tick **Use only my endpoint** so that no lookup is sent to
+   Blockstream or mempool.space.
+4. Click **Test**. On success you see *Works: it reports block N in X ms*.
+5. Click **Save**.
+
+Without "only my endpoint", your node is tried first and the public
+providers are the fallback. To undo, click **Stop using my endpoint**.
+
+**If the test fails:**
+
+| Message | Fix |
+|---|---|
+| *Enter a full URL, e.g. https://my-node.example/api* | Include `https://` and the host name. |
+| *The endpoint must start with https:// or http://* | Other schemes aren't supported. |
+| *Don't put credentials in the URL.* | Remove `user:password@`. |
+| *Remove the ?query or #fragment from the URL.* | Use only the base path. |
+| *It answered HTTP N. Is this the Esplora API path…?* | The server is reachable, but the path is wrong. Try adding `/api`. |
+| *It answered, but not with a block height.* | This isn't an Esplora API. |
+| *No answer within 8 seconds.* | The server is down or very slow. |
+| *Couldn't connect…* | Most often missing CORS headers, or `http://` blocked by the browser. Your browser's developer console shows which. |
+
+## 6. How fresh is the data?
+
+Every panel says how current its data is:
+
+| You see | Meaning |
+|---|---|
+| *Loading…* | First load, nothing saved yet. |
+| *Updated 2 min ago* | Fresh from a provider. Hover for the exact time. |
+| *Updated 2 min ago (cached) · refreshing…* | Saved data shown instantly while a fresh copy loads. |
+| Amber: *Couldn't refresh. Showing data from 5 min ago.* | No provider answered, so you see the last saved copy. |
+| Red: *Couldn't reach any Bitcoin data provider. Retrying automatically.* | No provider answered and nothing is saved. |
+| Red: *This transaction was not found.* | The providers answered: it doesn't exist (or they haven't seen it yet). |
+
+Pages refresh by themselves: about every 10 seconds while you're using
+the page, and every 30 seconds when idle. Refreshing pauses while the tab
+is in the background, and stops once there's nothing left to change, for
+example after a transaction confirms. While **● Live** is on, new blocks
+are announced instead, so the newest block and pending transactions are
+only re-checked every 5 minutes as a safety net.
+
+### Live and polling
+
+The indicator in the header shows how Assay learns about new blocks:
+
+- **● Live**: a connection to mempool.space (or to your own endpoint)
+  announces each new block the moment it is found. Assay then fetches and
+  checks the block the usual way. The announcement is only a hint.
+- **Connecting…**: opening that connection.
+- **Polling**: Assay asks for new blocks regularly instead. This happens
+  when live updates are turned off, unavailable, or not needed by the
+  current page.
+
+Hover over the indicator for details, or click it to open the **Providers**
+page. There you can turn live updates on or off, and see how many
+requests were made this session.
+
+## 7. Privacy: who sees your lookups
+
+Assay has no server of its own. Your browser talks directly to the data
+providers, which means **they can see what you look up**.
+
+| Who | What they receive |
+|---|---|
+| The best-ranked provider (Blockstream or mempool.space by default) | Every lookup: addresses, transactions, blocks. |
+| The next provider | Your lookup, if the first one fails. |
+| Every provider | Requests for the newest block only, to compare them. |
+| mempool.space live connection | Only "new block" notices. Never your lookups. |
+| The site host (GitHub Pages) and the CDNs (unpkg, jsDelivr) | Ordinary page loads, as for any website. |
+
+To keep lookups private, [use your own node](#5-use-your-own-node) with
+**Use only my endpoint** ticked. Then lookups and the live connection go
+only to your server.
+
+## 8. Data stored in your browser
+
+Assay saves a few things in your browser so that pages load instantly
+and work offline. Nothing is sent anywhere.
+
+| What | Kept for |
+|---|---|
+| Recently viewed data (blocks, transactions, addresses, mempool) | Up to 7 days, at most 500 entries |
+| Block headers used by the difficulty and total-work checks (about 80 bytes each) | Until you clear them |
+| The last 50 mempool-chart samples | Until pruned with the rest of the cache |
+| Your endpoint, live updates on/off, total-work opt-in, the last provider that worked | Until you change or clear them |
+
+To erase everything, clear the site data for the Assay site in your
+browser's settings. This is usually under *Privacy*, then *Cookies and
+site data*. Your settings return to their defaults.
+
+## 9. Troubleshooting
+
+**Every panel says it couldn't reach a provider.**
+Check your internet connection. If you use your own endpoint
+exclusively, check that your node is running. A browser extension that
+blocks requests can also cause this.
+
+**A badge shows `!` (couldn't check).**
+A provider didn't return the raw data needed. Reload the page later. A
+grey `!` is not a failure.
+
+**A badge shows a red ✗.**
+The data a provider sent doesn't match its own cryptographic proofs.
+Open **What was checked** to see which check failed. Then compare with
+another provider, or with your own node. Please
+[open an issue](https://github.com/bowo-prasetyo/bitcoin-explorer/issues)
+with the link to the page.
+
+**The indicator stays on "Polling".**
+This is expected with Blockstream or electrs endpoints, which don't offer
+live connections, and when live updates are off on the **Providers**
+page. Data still updates. It just takes a few seconds longer to notice a
+new block.
+
+**The chart has gaps.**
+The chart only records while its page is open. A gap means the page was
+closed, not that nothing happened.
+
+**The page says "Assay failed to start", or stays blank.**
+"Assay failed to start" means the browser wouldn't let Assay open its
+local storage, which some private modes block. A blank page usually
+means a script couldn't load, for example because an extension or
+network filter blocks unpkg.com or cdn.jsdelivr.net. Try a normal
+window, another browser, or another network.

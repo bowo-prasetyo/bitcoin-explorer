@@ -68,6 +68,11 @@ export default {
           <dd>{{ formatNumber(data.chain_stats.tx_count) }} confirmed</dd>
         </dl>
 
+        <provider-note v-if="data">
+          balances and history come from the data provider. Checking them
+          needs the full set of unspent coins, which only full nodes keep.
+        </provider-note>
+
       </template>
 
     </div>

@@ -146,9 +146,10 @@ export default {
         Point the explorer at an Esplora API you run or trust, such as
         <a href="https://github.com/Blockstream/electrs" rel="noopener" target="_blank">electrs</a>
         or a self-hosted mempool backend. It must allow cross-origin requests
-        (<code>Access-Control-Allow-Origin</code>), and this page can only
-        reach plain <code>http://</code> URLs on localhost or as a
-        <code>.onion</code> address in Tor Browser.
+        (<code>Access-Control-Allow-Origin</code>). Use an
+        <code>https://</code> URL: browsers block plain <code>http://</code>
+        from this page, except on localhost or for a <code>.onion</code>
+        address in Tor Browser.
       </p>
 
       <div v-if="settings.custom" class="notice notice-ok" style="margin-bottom:12px">

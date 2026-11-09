@@ -28,8 +28,8 @@ transaction.
    provider health visible. Let users bring their own endpoint.
 4. **Static and serverless.** It runs from any static host; there is no
    backend of ours to trust.
-5. **Claims match code.** The README describes what exists today; ideas
-   live in the roadmap below.
+5. **Claims match code.** The README and the user docs in `docs/` describe
+   what exists today; ideas live in the roadmap below.
 
 ## Roadmap
 
@@ -73,6 +73,8 @@ transaction.
   from "a different chain".
 - Provider health panel.
 - Bring-your-own Esplora endpoint, optionally exclusive.
+
+Since phase 3, work ships as individual features:
 
 ### Difficulty check ✅
 
@@ -124,5 +126,4 @@ transaction.
 ### Out of scope for now
 
 Wallet integration, transaction broadcasting, WebRTC peers and Lightning
-monitoring. They would spread an unproven product too thin; revisit once
-phase 3 has shipped.
+monitoring. They would spread a young product too thin.
