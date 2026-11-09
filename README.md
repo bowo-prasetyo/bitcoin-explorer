@@ -21,17 +21,22 @@ or any static host.
 
 ### Explorer
 
-- **Home:** chain tip, recent blocks, mempool size and fees, fee estimates
-  by confirmation target, fee histogram.
-- **Block:** height, time, transaction count, confirmations, transaction
-  list (first 25 transactions).
-- **Transaction:** fee, weight, confirmation status, input and output
-  addresses (OP_RETURN and non-standard outputs are labelled).
-- **Address:** confirmed and pending funded/spent totals and transaction
-  counts.
+- **Search:** block height, block hash, transaction id or mainnet address.
+  Press Enter to search. Input is checked before anything is sent, with an
+  explanation when it can't be valid.
+- **Home:** chain tip, recent blocks (linked, with age), mempool size and
+  fees, fee estimates by confirmation target, fee histogram.
+- **Block:** time, confirmations, size, weight, previous/next block links,
+  and all transactions, 25 per page, with output totals and fee rates.
+- **Transaction:** status and block, time, output total, fee and fee rate,
+  size, and every input and output with its amount. Inputs link to the
+  transaction that created the coins; OP_RETURN and non-standard outputs
+  are labelled.
+- **Address:** balance, pending change, totals received and sent, and the
+  transaction history with each transaction's net effect on the address
+  ("Load older transactions" pages back through history).
 - **Charts:** mempool transaction count over time, sampled by your browser
   while the page is open.
-- **Search:** block hash, txid or address.
 
 ### Data providers and failover
 
@@ -54,6 +59,8 @@ is visible.
   data, 1 h for confirmed transactions), no network request is made.
 - If the providers can't be reached, cached data stays on screen with a
   warning instead of a blank page.
+- The cache is pruned at startup: entries older than 7 days go first, and
+  it is capped at 500 entries.
 - Polling is every 10 s while you're active and 30 s when idle. It pauses
   in background tabs and refreshes as soon as you return. It stops once
   there's nothing left to watch (e.g. a transaction confirms).
@@ -96,7 +103,9 @@ request.
 | `index.html`, `app.js`, `router.js` | Entry point, app shell, routes |
 | `api.js` | Provider list, failover and health scoring |
 | `refresh.js` | Cache-first refresh with freshness status |
-| `db.js` | IndexedDB wrapper |
+| `db.js` | IndexedDB wrapper and cache pruning |
+| `search.js` | Classifies search input (height, hash, address, invalid) |
+| `format.js` | BTC amounts, fee rates, times |
 | `spv.js` | Verification primitives (Merkle root); not yet used by the UI |
 | `components/` | Views and the shared `DataStatus` indicator |
 | `tests/` | Unit tests |

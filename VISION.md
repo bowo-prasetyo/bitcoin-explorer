@@ -45,13 +45,19 @@ transaction.
 - Fix the Merkle-root implementation (byte order) and cover it with tests.
 - README rewritten to match reality.
 
-### Phase 2 — A usable explorer
+### Phase 2 — A usable explorer ✅
 
-- Search: Enter to submit, block-height search, input validation.
+- Search: Enter to submit, block-height search, input validation with
+  explanations (wrong length, testnet address, mixed-case bech32).
 - Clickable recent blocks; previous/next block navigation.
-- Transaction amounts, fee rate and time; address balance and history.
-- Block transaction pagination.
-- Cache eviction for IndexedDB.
+- Transaction amounts, fee rate, size, time and block link; input links to
+  the transaction that created each spent output.
+- Address balance, pending change and paginated history with the net
+  effect of each transaction.
+- Block transactions paginated 25 at a time.
+- IndexedDB cache pruned by age (7 days) and size (500 entries); the
+  write-only `blocks`/`txs` stores are gone.
+- Readable on phones.
 
 ### Phase 3 — Make verification visible
 
