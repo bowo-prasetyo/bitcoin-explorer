@@ -39,6 +39,12 @@ import {
 
 import { compareTips } from './consensus.js';
 
+import { parentTxids, checkSpentOutputs } from './inputs.js';
+
+import { formatBtc, formatSats } from './format.js';
+
+import { ApiError } from './api.js';
+
 import { headersNeeded, checkDifficulty } from './difficulty.js';
 
 import { get, put } from './db.js';
@@ -332,13 +338,136 @@ export async function verifyTransactionContents(tx) {
       checks,
       {
         note: ok
-          ? 'Input amounts and the fee come from the outputs being spent, which ' +
-            'are checked on their own transaction pages.'
-          : undefined
+          ? 'Input amounts and the fee are checked separately, against the ' +
+            'transactions whose outputs are being spent.'
+          : undefined,
+        // Verified output total, for the fee check.
+        outputTotal: ok ? parsed.vout.reduce((sum, o) => sum + o.value, 0) : null
       }
     );
   } catch (err) {
     return errorResult("Couldn't check the transaction contents", err);
+  }
+}
+
+// Above this many parent transactions, checking waits for the user.
+export const INPUT_CHECK_AUTO_LIMIT = 25;
+const INPUT_FETCH_CONCURRENCY = 6;
+
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker)
+  );
+
+  return out;
+}
+
+// That every input's amount (and script) is what the transaction it
+// spends from says, by hashing each parent's raw bytes; then, with the
+// outputs verified by verifyTransactionContents, that the fee adds up.
+export async function verifyTransactionInputs(tx, { outputTotal = null, force = false } = {}) {
+  if (tx.vin?.[0]?.is_coinbase) {
+    return result('na', 'Coinbase: it creates new coins, so there are no spent amounts to check.');
+  }
+
+  const parents = parentTxids(tx);
+
+  if (parents.length > INPUT_CHECK_AUTO_LIMIT && !force) {
+    return result(
+      'na',
+      `Spends from ${parents.length.toLocaleString('en-US')} earlier transactions; not checked automatically`,
+      [],
+      { needsConfirm: true, parentCount: parents.length }
+    );
+  }
+
+  try {
+    const raws = {};
+    let unreachable = 0;
+
+    await mapLimit(parents, INPUT_FETCH_CONCURRENCY, async txid => {
+      try {
+        raws[txid] = await getTxHex(txid);
+      } catch (err) {
+        // "Not found" for a transaction the provider itself listed as an
+        // input is an inconsistency, checked as a failure below. Anything
+        // else means we couldn't check.
+        if (!(err instanceof ApiError && err.kind === 'not_found')) {
+          unreachable++;
+        }
+      }
+    });
+
+    if (unreachable) {
+      return result(
+        'error',
+        `Couldn't download ${unreachable} of ${parents.length} spent transactions`
+      );
+    }
+
+    const r = await checkSpentOutputs(tx, raws);
+
+    const checks = [
+      {
+        label: parents.length === 1
+          ? 'The spent transaction hashes to its txid'
+          : `All ${parents.length.toLocaleString('en-US')} spent transactions hash to their txids`,
+        ok: r.parentsOk
+      },
+      {
+        label: 'Each input amount and address matches the output it spends',
+        ok: r.amountsOk
+      }
+    ];
+
+    const feeCheckable = r.ok && outputTotal !== null;
+    const computedFee = feeCheckable ? r.totalIn - outputTotal : null;
+
+    if (feeCheckable) {
+      checks.push({
+        label: `Fee = inputs − outputs = ${formatSats(computedFee)}, as shown`,
+        ok: computedFee === tx.fee
+      });
+    }
+
+    const ok = checks.every(c => c.ok);
+
+    const facts = r.ok
+      ? [
+          { label: 'Inputs total', value: formatBtc(r.totalIn) },
+          ...(feeCheckable ? [{ label: 'Fee (recomputed)', value: formatBtc(computedFee) }] : [])
+        ]
+      : [];
+
+    return result(
+      ok ? 'ok' : 'fail',
+      ok
+        ? (feeCheckable ? 'Input amounts and fee verified' : 'Input amounts verified')
+        : 'Input amounts check FAILED',
+      checks,
+      {
+        facts,
+        perInput: r.perInput,
+        note: ok
+          ? (feeCheckable ? '' : 'The fee needs verified outputs, which the contents check above could not provide. ') +
+            'This proves each amount from the transaction that created it, not that ' +
+            'those outputs were still unspent; that takes the full set of unspent ' +
+            'outputs, which only full nodes keep.'
+          : undefined
+      }
+    );
+  } catch (err) {
+    return errorResult("Couldn't check the input amounts", err);
   }
 }
 

@@ -21,7 +21,8 @@ import { now } from './DataStatus.js';
 
 import {
   verifyTransactionContents,
-  verifyTransactionInclusion
+  verifyTransactionInclusion,
+  verifyTransactionInputs
 } from '../verify.js';
 
 export default {
@@ -84,6 +85,13 @@ export default {
 
       <template v-if="tx">
         <verify-badge :result="contentsCheck"></verify-badge>
+        <verify-badge :result="inputsCheck">
+          <button
+            v-if="inputsCheck?.needsConfirm"
+            class="verify-action"
+            @click="checkInputs(true)"
+          >Check all inputs ({{ formatNumber(inputsCheck.parentCount) }} downloads)</button>
+        </verify-badge>
         <verify-badge :result="inclusionCheck"></verify-badge>
       </template>
 
@@ -126,6 +134,12 @@ export default {
           </div>
 
           <div class="io-amount" v-if="!vin.is_coinbase">
+            <span
+              v-if="inputMark(index)"
+              class="io-mark"
+              :class="inputMark(index).ok ? 'pos' : 'neg'"
+              :title="inputMark(index).ok ? 'Amount verified against the transaction it spends' : inputMark(index).reason"
+            >{{ inputMark(index).ok ? '✓' : '✗' }}</span>
             {{ formatBtc(vin.prevout?.value) }}
           </div>
 
@@ -179,6 +193,7 @@ export default {
 
       contentsCheck: null,
       contentsStarted: false,
+      inputsCheck: null,
       inclusionCheck: null,
       inclusionStartedFor: null
     };
@@ -214,12 +229,28 @@ export default {
       return getTx(this.txid);
     },
 
+    // Inputs run after contents so the fee can use the verified outputs.
+    async checkInputs(force) {
+      this.inputsCheck = null;
+      this.inputsCheck = await verifyTransactionInputs(this.tx, {
+        outputTotal: this.contentsCheck?.outputTotal ?? null,
+        force
+      });
+    },
+
+    inputMark(index) {
+      return this.inputsCheck?.perInput?.[index] || null;
+    },
+
     async verify() {
       const tx = this.tx;
 
       if (!this.contentsStarted) {
         this.contentsStarted = true;
-        verifyTransactionContents(tx).then(r => { this.contentsCheck = r; });
+        verifyTransactionContents(tx).then(r => {
+          this.contentsCheck = r;
+          this.checkInputs(false);
+        });
       }
 
       // Re-check inclusion once a pending transaction confirms.
