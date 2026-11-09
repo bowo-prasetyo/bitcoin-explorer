@@ -95,10 +95,19 @@ transaction.
   and show it in the same form as Bitcoin Core so it can be compared
   with your own node. Opt-in the first time; cached afterwards.
 
+### Difficulty history ✅
+
+- The difficulty of any block can be traced back to the genesis block:
+  every retarget on the way is recomputed from proof-of-work-checked
+  headers (each period's first and last block). It runs automatically on
+  block pages once the headers are cached, and alongside the total-work
+  check on the home page.
+
 ### Next ideas
 
-- Extend the difficulty check further back (several retarget steps), or
-  link every header between the period start and the block.
+- Link every header inside each period. That needs all ~925,000 headers
+  (~74 MB), so it's likely only worthwhile with a bulk-header source or a
+  user's own node.
 
 ### Later
 
