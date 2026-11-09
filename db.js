@@ -7,6 +7,8 @@
 //   headers - reserved for block headers used by in-browser verification
 //             (VISION.md, phase 3).
 
+// Named before the project became Assay; renaming it would discard every
+// visitor's cache.
 const DB_NAME = 'btc-explorer';
 const DB_VERSION = 3;
 

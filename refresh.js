@@ -1,5 +1,5 @@
 // refresh.js
-// Cache-first auto-refresh for Bitcoin Explorer.
+// Cache-first auto-refresh for Assay.
 //
 // Each refresher:
 //   1. shows whatever is cached in IndexedDB immediately, however old,

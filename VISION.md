@@ -1,6 +1,6 @@
 # Vision
 
-**A Bitcoin explorer where your browser checks the data instead of trusting it.**
+**Assay: a Bitcoin explorer where your browser checks the data instead of trusting it.**
 
 Every explorer today asks you to trust its server. This one runs entirely in
 your browser and is working toward verifying what public APIs tell it:

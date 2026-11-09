@@ -54,7 +54,7 @@ function showFatalError(err) {
   box.style.cssText = 'padding:20px;font-family:Arial';
 
   const title = document.createElement('h2');
-  title.textContent = 'Application failed to start';
+  title.textContent = 'Assay failed to start';
 
   const detail = document.createElement('pre');
   detail.textContent = String(err?.message || err);
