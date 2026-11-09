@@ -81,11 +81,17 @@ transaction.
   in turn is the retarget computed from the previous period's headers.
   The arithmetic is tested against Bitcoin Core's own test vectors.
 
+### Input amounts check ✅
+
+- Every transaction page checks each input's amount and address against
+  the raw transaction it spends from (which must hash to its txid), and
+  recomputes the fee from verified inputs and outputs. Large
+  transactions ask before downloading more than 25 spent transactions.
+
 ### Next ideas
 
 - Extend the difficulty check further back (several retarget steps), or
   link every header between the period start and the block.
-- Verify input amounts by checking the spent outputs' transactions.
 - Show the cumulative work behind the tip.
 
 ### Later
