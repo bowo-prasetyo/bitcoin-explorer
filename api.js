@@ -210,7 +210,16 @@ function markFailure(base, timeout = false, message = '') {
   state.lastError = timeout ? 'timeout' : message;
 }
 
+// Requests made to providers this session, for the Providers page.
+const networkStats = { requests: 0, since: Date.now() };
+
+export function getNetworkStats() {
+  return { ...networkStats };
+}
+
 async function fetchWithTimeout(url, timeoutMs) {
+  networkStats.requests++;
+
   const controller = new AbortController();
 
   const timer = setTimeout(

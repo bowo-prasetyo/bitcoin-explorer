@@ -233,6 +233,7 @@ export default {
 
       createSmartRefresher({
         cacheKey: 'addr-' + this.address,
+        live: 'refresh',
         cacheTTL: CACHE_TTL.address,
         fetchFn: () => getAddress(this.address),
         status: this.status,
@@ -242,6 +243,7 @@ export default {
 
       createSmartRefresher({
         cacheKey: 'addr-txs-' + this.address,
+        live: 'refresh',
         cacheTTL: CACHE_TTL.address,
         fetchFn: () => getAddressTxs(this.address),
         status: this.txsStatus,

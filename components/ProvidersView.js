@@ -1,4 +1,5 @@
 import {
+  getNetworkStats,
   benchmarkNodes,
   clearCustomProvider,
   getNodeHealth,
@@ -9,6 +10,16 @@ import {
 } from '../api.js';
 
 import { verifyTip } from '../verify.js';
+
+import { liveFeed } from '../live.js';
+
+const STATUS_TEXT = {
+  live: 'Connected: new blocks are announced the moment they are found.',
+  connecting: 'Connecting…',
+  unavailable: 'Unavailable right now: checking for new blocks by polling, and retrying the connection now and then.',
+  off: 'Not connected (no page here needs it, or the tab is in the background).',
+  disabled: 'Off: checking for new blocks by polling.'
+};
 
 import { formatAgo } from '../format.js';
 
@@ -80,6 +91,49 @@ export default {
       <verify-badge :result="tipCheck"></verify-badge>
 
       <button @click="checkTip" :disabled="tipCheck === null">Check again</button>
+
+    </div>
+
+    <!-- LIVE UPDATES -->
+    <div class="card">
+
+      <h2>Live updates</h2>
+
+      <p class="muted">
+        Instead of asking every few seconds whether a new block exists, the
+        explorer keeps one WebSocket open to a mempool-style API and is told
+        when one is found. It subscribes to new blocks only, and a message is
+        only a hint: the block is then fetched and verified the usual way.
+        The connection closes when the tab is in the background.
+      </p>
+
+      <label class="live-toggle">
+        <input type="checkbox" :checked="liveEnabled" @change="toggleLive($event.target.checked)">
+        Use live updates
+      </label>
+
+      <dl class="facts">
+        <dt>Status</dt>
+        <dd>{{ statusText }}</dd>
+
+        <template v-if="liveStats.url">
+          <dt>Endpoint</dt>
+          <dd class="hash">{{ liveStats.url }}</dd>
+
+          <dt>Received</dt>
+          <dd>
+            {{ liveStats.messages.toLocaleString('en-US') }} messages
+            ({{ (liveStats.bytes / 1024).toFixed(1) }} KB),
+            {{ liveStats.blocks.toLocaleString('en-US') }} new {{ liveStats.blocks === 1 ? 'block' : 'blocks' }}
+          </dd>
+        </template>
+
+        <dt>Provider requests</dt>
+        <dd>
+          {{ network.requests.toLocaleString('en-US') }} this session
+          <span class="muted">({{ perMinute }} per minute)</span>
+        </dd>
+      </dl>
 
     </div>
 
@@ -167,11 +221,33 @@ export default {
       testing: false,
       testResult: null,
       formError: '',
-      saved: ''
+      saved: '',
+
+      liveEnabled: liveFeed.enabled,
+      liveStatus: liveFeed.status,
+      liveStats: { ...liveFeed.stats },
+      network: getNetworkStats()
     };
   },
 
+  computed: {
+    statusText() {
+      return STATUS_TEXT[this.liveStatus];
+    },
+
+    perMinute() {
+      const minutes = Math.max((Date.now() - this.network.since) / 60000, 1 / 60);
+      return (this.network.requests / minutes).toFixed(1);
+    }
+  },
+
   methods: {
+
+    toggleLive(on) {
+      liveFeed.setEnabled(on);
+      this.liveEnabled = on;
+      this.refreshHealth();
+    },
 
     ago(ms) {
       return formatAgo(ms, now.value);
@@ -180,6 +256,9 @@ export default {
     refreshHealth() {
       this.health = getNodeHealth();
       this.settings = getProviderSettings();
+      this.liveStatus = liveFeed.status;
+      this.liveStats = { ...liveFeed.stats };
+      this.network = getNetworkStats();
     },
 
     async checkAll() {
@@ -227,6 +306,7 @@ export default {
       }
 
       setCustomProvider({ base: this.testResult.base, exclusive: this.exclusive });
+      liveFeed.reconfigure();
 
       this.saved = this.exclusive
         ? 'Saved. All lookups now go only to your endpoint.'
@@ -239,6 +319,7 @@ export default {
 
     remove() {
       clearCustomProvider();
+      liveFeed.reconfigure();
       this.saved = 'Removed. Lookups go to the public providers again.';
       this.endpoint = '';
       this.exclusive = false;
