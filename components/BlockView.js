@@ -25,6 +25,8 @@ import { now } from './DataStatus.js';
 
 import {
   verifyBlockDifficulty,
+  verifyDifficultyHistory,
+  historyHeaderCount,
   verifyBlockHeader,
   verifyBlockTransactions
 } from '../verify.js';
@@ -72,7 +74,18 @@ export default {
       </dl>
 
       <verify-badge v-if="block" :result="headerCheck"></verify-badge>
-      <verify-badge v-if="block" :result="difficultyCheck"></verify-badge>
+      <verify-badge v-if="block" :result="difficultyCheck">
+        <template v-if="historyOffer && !historyRunning">
+          <button class="verify-action" @click="traceHistory">
+            Trace back to the genesis block ({{ formatNumber(historyOffer) }} headers)
+          </button>
+        </template>
+        <div v-if="historyRunning" class="muted small" style="margin-top:8px">
+          Tracing the difficulty history… {{ formatNumber(historyProgress.done) }} / {{ formatNumber(historyProgress.total) }}
+          <progress :value="historyProgress.done" :max="historyProgress.total"></progress>
+        </div>
+      </verify-badge>
+      <verify-badge v-if="block && historyCheck" :result="historyCheck"></verify-badge>
 
     </div>
 
@@ -150,6 +163,10 @@ export default {
 
       headerCheck: null,
       difficultyCheck: null,
+      historyCheck: null,
+      historyOffer: 0,
+      historyRunning: false,
+      historyProgress: { done: 0, total: 0 },
       txListCheck: null,
       txListStarted: false,
       verifiedBlockId: null
@@ -235,6 +252,41 @@ export default {
         this.headerCheck.header,
         this.tipHeight
       );
+
+      this.offerHistory();
+    },
+
+    // Once one retarget step checks out, trace the rest back to genesis:
+    // automatically if every header is already in the local store, else
+    // offer it with its cost.
+    async offerHistory() {
+      if (this.difficultyCheck?.state !== 'ok' || this.block.height < 2 * 2016) {
+        return;
+      }
+
+      const cached = await verifyDifficultyHistory(this.block.height, {
+        tipHeight: this.tipHeight,
+        cachedOnly: true
+      });
+
+      if (cached) {
+        this.historyCheck = cached;
+      } else {
+        this.historyOffer = historyHeaderCount(this.block.height);
+      }
+    },
+
+    async traceHistory() {
+      this.historyRunning = true;
+      this.historyProgress = { done: 0, total: this.historyOffer };
+
+      this.historyCheck = await verifyDifficultyHistory(this.block.height, {
+        tipHeight: this.tipHeight,
+        onProgress: (done, total) => { this.historyProgress = { done, total }; }
+      });
+
+      this.historyRunning = false;
+      this.historyOffer = 0;
     },
 
     async verifyTxList() {
