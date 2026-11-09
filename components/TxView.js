@@ -270,6 +270,9 @@ export default {
     this.refresher = createSmartRefresher({
       cacheKey: 'tx-' + this.txid,
 
+      // A pending transaction can only confirm when a block arrives.
+      live: 'replace',
+
       // Confirmed transactions don't change; pending ones do.
       cacheTTL: tx =>
         tx?.status?.confirmed

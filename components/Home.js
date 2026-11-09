@@ -483,6 +483,7 @@ export default {
       createSmartRefresher({
         cacheKey: 'latest-block',
         cacheTTL: CACHE_TTL.latestBlock,
+        live: 'replace',
         fetchFn: this.loadLatestBlock,
         status: this.latestStatus,
         onUpdate: data => {
@@ -495,6 +496,7 @@ export default {
       createSmartRefresher({
         cacheKey: 'mempool',
         cacheTTL: CACHE_TTL.mempool,
+        live: 'refresh',
         fetchFn: this.loadMempool,
         status: this.mempoolStatus,
         onUpdate: data => {
@@ -506,6 +508,7 @@ export default {
       createSmartRefresher({
         cacheKey: 'recent-blocks',
         cacheTTL: CACHE_TTL.recentBlocks,
+        live: 'replace',
         fetchFn: this.loadRecentBlocks,
         status: this.blocksStatus,
         onUpdate: data => { this.recentBlocks = data; }
@@ -514,6 +517,7 @@ export default {
       createSmartRefresher({
         cacheKey: 'fee-estimates',
         cacheTTL: CACHE_TTL.feeEstimates,
+        live: 'refresh',
         fetchFn: this.loadFeeEstimates,
         status: this.feesStatus,
         onUpdate: data => { this.fees = data; }

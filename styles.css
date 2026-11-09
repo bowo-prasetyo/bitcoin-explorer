@@ -408,3 +408,27 @@ progress {
   margin-top: 6px;
   accent-color: #66bb6a;
 }
+
+/* ---------- live indicator ---------- */
+
+header .live-indicator {
+  margin-left: auto;
+  font-size: 0.85em;
+  color: #9a9a9a;
+}
+
+header .live-indicator.live-live {
+  color: #81c784;
+}
+
+.live-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.live-toggle input {
+  width: auto;
+  margin: 0;
+}

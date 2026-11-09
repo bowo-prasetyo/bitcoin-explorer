@@ -12,6 +12,7 @@
 //      refreshes as soon as the tab becomes visible again.
 
 import { get, put } from './db.js';
+import { liveFeed } from './live.js';
 
 // =====================================================
 // CONFIGURATION
@@ -21,6 +22,7 @@ const REFRESH_CONFIG = {
   FAST_INTERVAL: 10000,      // user active
   NORMAL_INTERVAL: 30000,    // user idle
   HIDDEN_RECHECK: 120000,    // hidden tab: only re-check visibility
+  LIVE_SAFETY: 300000,       // live updates on: slow safety-net poll
   USER_ACTIVE_WINDOW: 30000
 };
 
@@ -133,7 +135,14 @@ export function createSmartRefresher({
 
   // false: load once (cache-first, network if stale) and never poll.
   // For data that doesn't change, such as a page of block transactions.
-  poll = true
+  poll = true,
+
+  // How live "new block" notifications (live.js) affect this refresher:
+  //   'replace' - the data only changes with a new block: while live,
+  //               poll only as a slow safety net and refresh on each block
+  //   'refresh' - keep polling as usual, and also refresh on each block
+  //   null      - ignore them
+  live = null
 }) {
 
   let timer = null;
@@ -157,7 +166,16 @@ export function createSmartRefresher({
     onUpdate(data, { cached, timestamp });
   }
 
-  async function refresh() {
+  let again = false;
+  let unsubscribeBlock = null;
+  let unsubscribeStatus = null;
+
+  async function refresh(force = false) {
+    if (inFlight && force) {
+      again = true; // a block arrived mid-request: go again afterwards
+      return;
+    }
+
     if (destroyed || inFlight) {
       return;
     }
@@ -189,6 +207,7 @@ export function createSmartRefresher({
       // 2. Fresh enough? Skip the network.
       if (
         cached &&
+        !force &&
         Date.now() - cached.timestamp < ttlFor(cached.data)
       ) {
         return;
@@ -230,7 +249,10 @@ export function createSmartRefresher({
       inFlight = false;
       status.refreshing = false;
 
-      if (poll) {
+      if (again && !destroyed) {
+        again = false;
+        refresh(true);
+      } else if (poll) {
         scheduleNext();
       }
     }
@@ -243,7 +265,11 @@ export function createSmartRefresher({
 
     clearTimeout(timer);
 
-    const interval = getAdaptiveInterval();
+    let interval = getAdaptiveInterval();
+
+    if (interval !== null && live === 'replace' && liveFeed.isLive()) {
+      interval = REFRESH_CONFIG.LIVE_SAFETY;
+    }
 
     timer = interval === null
       ? setTimeout(scheduleNext, REFRESH_CONFIG.HIDDEN_RECHECK)
@@ -261,12 +287,31 @@ export function createSmartRefresher({
     if (poll) {
       document.addEventListener('visibilitychange', onVisibilityChange);
     }
+
     refresh();
+
+    if (live) {
+      unsubscribeBlock = liveFeed.onBlock(() => {
+        if (!destroyed) {
+          clearTimeout(timer);
+          refresh(true);
+        }
+      });
+    }
+
+    if (live === 'replace') {
+      // Socket up: stretch the interval. Socket down: back to polling now.
+      unsubscribeStatus = liveFeed.onStatus(() => {
+        if (!destroyed && !inFlight) scheduleNext();
+      });
+    }
   }
 
   function stop() {
     destroyed = true;
     clearTimeout(timer);
+    unsubscribeBlock?.();
+    unsubscribeStatus?.();
     document.removeEventListener('visibilitychange', onVisibilityChange);
   }
 

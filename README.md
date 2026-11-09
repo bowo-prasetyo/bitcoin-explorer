@@ -95,13 +95,40 @@ is visible.
   in background tabs and refreshes as soon as you return. It stops once
   there's nothing left to watch (e.g. a transaction confirms).
 
+### Live updates
+
+New blocks are announced over a WebSocket instead of being polled for:
+- **One connection:** a single shared connection to mempool.space's
+  WebSocket API, or to your own endpoint if it runs a mempool backend.
+- **Blocks only:** it subscribes to new blocks and nothing else.
+- **A hint, not data:** a message only prompts the page to fetch and
+  verify the new block through the normal requests.
+- **Less polling:** while connected, the tip, recent blocks and pending
+  transactions are polled only every 5 minutes as a safety net, instead of
+  every 10–30 seconds. The mempool and fee estimates keep their usual
+  polling and also refresh when a block arrives.
+- **Polite connection:**
+  - It opens only while a visible page needs it, and closes 30 seconds
+    after the tab goes to the background.
+  - It pings every 30 seconds to detect dead connections.
+  - It reconnects with exponential back-off and jitter.
+  - It falls back to polling whenever it's unavailable. That includes
+    Blockstream and electrs endpoints, which have no WebSocket.
+
+The header shows **● Live** or **Polling**. The **Providers** page has an
+on/off switch and counts provider requests and WebSocket traffic for the
+session, so the savings can be measured. With your own endpoint set to
+exclusive, the WebSocket goes only to your endpoint.
+
 ### Privacy note
 
 Your lookups (addresses, transactions) are sent to the providers above,
 and to the next one if the first fails. The chain-tip check asks every
 provider, but only for the tip. Running entirely in the browser means
 there's no server of ours, not that the providers can't see your queries.
-To keep lookups private, use your own endpoint exclusively.
+Live updates keep a connection open to mempool.space (or your endpoint)
+that carries only "new block" notices, never your lookups. To keep
+lookups private, use your own endpoint exclusively.
 
 ---
 
@@ -139,6 +166,7 @@ request.
 | `format.js` | BTC amounts, fee rates, times |
 | `spv.js` | Verification primitives: header proof of work, Merkle roots and proofs, txids from raw transactions |
 | `verify.js` | Runs the checks behind each badge |
+| `live.js` | Live "new block" notifications over WebSocket |
 | `consensus.js` | Compares chain tips across providers |
 | `chainwork.js` | Total work behind a tip, from one header per difficulty period |
 | `inputs.js` | Checks inputs against the raw transactions they spend |

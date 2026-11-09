@@ -324,6 +324,7 @@ export default {
 
       createSmartRefresher({
         cacheKey: 'block-' + this.hash,
+        live: 'refresh',
 
         cacheTTL: data =>
           data?.tipHeight - data?.block?.height >= 6
