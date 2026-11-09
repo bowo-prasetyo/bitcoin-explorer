@@ -59,13 +59,27 @@ transaction.
   write-only `blocks`/`txs` stores are gone.
 - Readable on phones.
 
-### Phase 3 — Make verification visible
+### Phase 3 — Make verification visible ✅
 
-- Header proof-of-work check on every block (hash vs. target).
-- Merkle inclusion proof on every confirmed transaction.
-- Cross-provider agreement on the chain tip.
+- Header proof-of-work check on every block: the header hashes to the
+  block id, meets its own difficulty target, that target is within mainnet
+  limits, and the details shown match the header.
+- Full transaction list of a block rebuilds the header's merkle root.
+- Transaction contents: raw bytes hash to the txid and contain the outputs
+  shown.
+- Merkle inclusion proof on every confirmed transaction, against a
+  proof-of-work-checked header.
+- Cross-provider agreement on the chain tip, telling "one block behind"
+  from "a different chain".
 - Provider health panel.
-- Bring-your-own Esplora endpoint (self-hosted node, Tor).
+- Bring-your-own Esplora endpoint, optionally exclusive.
+
+### Next ideas
+
+- Check that a block's difficulty is the right one for its height, by
+  following headers back to a retarget boundary.
+- Verify input amounts by checking the spent outputs' transactions.
+- Show the cumulative work behind the tip.
 
 ### Later
 

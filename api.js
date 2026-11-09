@@ -1,11 +1,13 @@
 // api.js
 // Multi-provider Bitcoin API client with failover and health scoring.
 //
-// Every provider here speaks the Esplora REST API. Providers are listed
-// only when their operator is known: a verifying explorer should be able
-// to say exactly whom it asked.
+// Every provider here speaks the Esplora REST API. Default providers are
+// listed only when their operator is known: a verifying explorer should be
+// able to say exactly whom it asked. Users can add their own endpoint
+// (a self-hosted Esplora, or one reached over Tor), and optionally use it
+// exclusively so no lookup leaves their own infrastructure.
 
-const API_NODES = [
+const DEFAULT_PROVIDERS = [
   {
     name: 'Blockstream',
     base: 'https://blockstream.info/api'
@@ -36,12 +38,113 @@ export class ApiError extends Error {
 }
 
 // =====================================================
+// SETTINGS (custom provider)
+// =====================================================
+
+const BEST_NODE_KEY = 'btc_explorer_best_node';
+const CUSTOM_KEY = 'btc_explorer_custom_provider';
+
+function readStorage(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null; // private mode, blocked storage
+  }
+}
+
+function writeStorage(key, value) {
+  try {
+    if (value === null) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+// Normalises and validates an Esplora base URL, e.g.
+// "https://my.node/api/" -> "https://my.node/api".
+// Throws with a user-facing message.
+export function normalizeEndpoint(input) {
+  let url;
+
+  try {
+    url = new URL((input || '').trim());
+  } catch {
+    throw new Error('Enter a full URL, e.g. https://my-node.example/api');
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('The endpoint must start with https:// or http://');
+  }
+
+  if (url.username || url.password) {
+    throw new Error("Don't put credentials in the URL.");
+  }
+
+  if (url.search || url.hash) {
+    throw new Error('Remove the ?query or #fragment from the URL.');
+  }
+
+  return (url.origin + url.pathname).replace(/\/+$/, '');
+}
+
+function loadCustom() {
+  try {
+    const parsed = JSON.parse(readStorage(CUSTOM_KEY) || 'null');
+
+    if (parsed?.base) {
+      return {
+        base: normalizeEndpoint(parsed.base),
+        exclusive: !!parsed.exclusive
+      };
+    }
+  } catch {
+    // corrupted or invalid setting: ignore it
+  }
+  return null;
+}
+
+let custom = loadCustom();
+
+// The providers requests may go to, in no particular order.
+function activeProviders() {
+  if (!custom) {
+    return DEFAULT_PROVIDERS;
+  }
+
+  const mine = { name: 'Your endpoint', base: custom.base, custom: true };
+
+  return custom.exclusive
+    ? [mine]
+    : [mine, ...DEFAULT_PROVIDERS.filter(p => p.base !== custom.base)];
+}
+
+export function getProviderSettings() {
+  return {
+    custom: custom ? { ...custom } : null,
+    defaults: DEFAULT_PROVIDERS.map(p => ({ ...p }))
+  };
+}
+
+export function setCustomProvider({ base, exclusive }) {
+  custom = { base: normalizeEndpoint(base), exclusive: !!exclusive };
+  writeStorage(CUSTOM_KEY, JSON.stringify(custom));
+  ensureState(custom.base);
+}
+
+export function clearCustomProvider() {
+  custom = null;
+  writeStorage(CUSTOM_KEY, null);
+}
+
+// =====================================================
 // RUNTIME STATE
 // =====================================================
 
 const nodeState = new Map();
-
-const STORAGE_KEY = 'btc_explorer_best_node';
 
 const REQUEST_TIMEOUT = 8000;
 
@@ -51,57 +154,60 @@ const SCORE_SUCCESS = 5;
 const SCORE_FAILURE = -15;
 const SCORE_TIMEOUT = -20;
 
-for (const node of API_NODES) {
-  nodeState.set(node.base, {
-    score: 100,
-    success: 0,
-    failure: 0,
-    latency: null,
-    lastSuccess: 0
-  });
+// The user's own endpoint is tried first while it stays healthy.
+const CUSTOM_PRIORITY = 1000;
+
+function ensureState(base) {
+  if (!nodeState.has(base)) {
+    nodeState.set(base, {
+      score: 100,
+      success: 0,
+      failure: 0,
+      latency: null,
+      lastSuccess: 0,
+      lastError: null
+    });
+  }
+  return nodeState.get(base);
+}
+
+for (const node of activeProviders()) {
+  ensureState(node.base);
 }
 
 // Give the provider that worked last session a head start.
-try {
-  const cachedNode = localStorage.getItem(STORAGE_KEY);
+{
+  const best = readStorage(BEST_NODE_KEY);
 
-  if (cachedNode && nodeState.has(cachedNode)) {
-    nodeState.get(cachedNode).score += 50;
+  if (best && nodeState.has(best)) {
+    nodeState.get(best).score += 50;
   }
-} catch {
-  // localStorage unavailable (private mode, blocked storage)
+}
+
+function rankScore(node) {
+  return ensureState(node.base).score + (node.custom ? CUSTOM_PRIORITY : 0);
 }
 
 function getRankedNodes() {
-  return [...API_NODES].sort(
-    (a, b) =>
-      nodeState.get(b.base).score -
-      nodeState.get(a.base).score
-  );
-}
-
-function cacheBestNode(base) {
-  try {
-    localStorage.setItem(STORAGE_KEY, base);
-  } catch {
-    // ignore
-  }
+  return [...activeProviders()].sort((a, b) => rankScore(b) - rankScore(a));
 }
 
 function markSuccess(base, latency) {
-  const state = nodeState.get(base);
+  const state = ensureState(base);
 
   state.score += SCORE_SUCCESS;
   state.success++;
   state.latency = latency;
   state.lastSuccess = Date.now();
+  state.lastError = null;
 }
 
-function markFailure(base, timeout = false) {
-  const state = nodeState.get(base);
+function markFailure(base, timeout = false, message = '') {
+  const state = ensureState(base);
 
   state.score += timeout ? SCORE_TIMEOUT : SCORE_FAILURE;
   state.failure++;
+  state.lastError = timeout ? 'timeout' : message;
 }
 
 async function fetchWithTimeout(url, timeoutMs) {
@@ -148,7 +254,7 @@ async function apiFetch(path) {
     } catch (err) {
       const isTimeout = err.name === 'AbortError';
 
-      markFailure(node.base, isTimeout);
+      markFailure(node.base, isTimeout, err.message);
 
       errors.push({
         node: node.name,
@@ -162,7 +268,7 @@ async function apiFetch(path) {
 
     if (response.ok) {
       markSuccess(node.base, latency);
-      cacheBestNode(node.base);
+      writeStorage(BEST_NODE_KEY, node.base);
       return response;
     }
 
@@ -179,7 +285,7 @@ async function apiFetch(path) {
       );
     }
 
-    markFailure(node.base);
+    markFailure(node.base, false, `HTTP ${response.status}`);
 
     errors.push({
       node: node.name,
@@ -207,11 +313,23 @@ export async function getTipHeight() {
 
 export async function getBlockHash(height) {
   const r = await apiFetch(`/block-height/${height}`);
-  return await r.text();
+  return (await r.text()).trim();
 }
 
 export async function getBlock(hash) {
   const r = await apiFetch(`/block/${hash}`);
+  return await r.json();
+}
+
+// Raw 80-byte header as hex.
+export async function getBlockHeader(hash) {
+  const r = await apiFetch(`/block/${hash}/header`);
+  return (await r.text()).trim().toLowerCase();
+}
+
+// Every txid in the block, in block order.
+export async function getBlockTxids(hash) {
+  const r = await apiFetch(`/block/${hash}/txids`);
   return await r.json();
 }
 
@@ -226,6 +344,18 @@ export async function getBlockTxs(hash, startIndex = 0) {
 
 export async function getTx(txid) {
   const r = await apiFetch(`/tx/${txid}`);
+  return await r.json();
+}
+
+// Raw transaction as hex.
+export async function getTxHex(txid) {
+  const r = await apiFetch(`/tx/${txid}/hex`);
+  return (await r.text()).trim().toLowerCase();
+}
+
+// { block_height, merkle: [sibling hashes], pos }
+export async function getMerkleProof(txid) {
+  const r = await apiFetch(`/tx/${txid}/merkle-proof`);
   return await r.json();
 }
 
@@ -275,24 +405,117 @@ export async function tryGetBlock(hash) {
 }
 
 // =====================================================
+// ASKING EACH PROVIDER SEPARATELY (no failover)
+// =====================================================
+
+async function fetchTextFrom(base, path, timeoutMs = REQUEST_TIMEOUT) {
+  const start = performance.now();
+
+  let r;
+  try {
+    r = await fetchWithTimeout(base + path, timeoutMs);
+  } catch (err) {
+    const timeout = err.name === 'AbortError';
+    markFailure(base, timeout, err.message);
+    throw new Error(timeout ? 'timed out' : 'unreachable (network or CORS error)');
+  }
+
+  if (!r.ok) {
+    markFailure(base, false, `HTTP ${r.status}`);
+    throw new Error(`HTTP ${r.status}`);
+  }
+
+  markSuccess(base, performance.now() - start);
+  return (await r.text()).trim();
+}
+
+// Asks every active provider for its chain tip, independently.
+// Resolves to [{ name, base, ok, height, hash } | { name, base, ok: false, error }].
+export async function getTipFromEach() {
+  return Promise.all(
+    activeProviders().map(async p => {
+      try {
+        const hash = (await fetchTextFrom(p.base, '/blocks/tip/hash')).toLowerCase();
+        // Header and height of that exact block, so they can't straddle a
+        // new block arriving between requests.
+        const [headerText, statusText] = await Promise.all([
+          fetchTextFrom(p.base, `/block/${hash}/header`),
+          fetchTextFrom(p.base, `/block/${hash}/status`)
+        ]);
+        const header = headerText.toLowerCase();
+        const height = JSON.parse(statusText).height;
+
+        if (!/^[0-9a-f]{64}$/.test(hash) || !Number.isInteger(height)) {
+          throw new Error('unexpected response');
+        }
+
+        return { name: p.name, base: p.base, ok: true, height, hash, header };
+      } catch (err) {
+        return { name: p.name, base: p.base, ok: false, error: err.message };
+      }
+    })
+  );
+}
+
+// Hash at `height` according to one specific provider.
+export async function getBlockHashFrom(base, height) {
+  return (await fetchTextFrom(base, `/block-height/${height}`)).toLowerCase();
+}
+
+// Checks that an endpoint looks like a working Esplora API.
+export async function testEndpoint(input) {
+  const base = normalizeEndpoint(input);
+  const start = performance.now();
+
+  try {
+    const r = await fetchWithTimeout(base + '/blocks/tip/height', REQUEST_TIMEOUT);
+
+    if (!r.ok) {
+      return { ok: false, base, error: `It answered HTTP ${r.status}. Is this the Esplora API path (often ending in /api)?` };
+    }
+
+    const height = parseInt((await r.text()).trim(), 10);
+
+    if (!Number.isFinite(height)) {
+      return { ok: false, base, error: "It answered, but not with a block height. Is this an Esplora API?" };
+    }
+
+    return { ok: true, base, height, latency: Math.round(performance.now() - start) };
+
+  } catch (err) {
+    return {
+      ok: false,
+      base,
+      error: err.name === 'AbortError'
+        ? 'No answer within 8 seconds.'
+        : "Couldn't connect. Check the URL, that the server sends CORS headers " +
+          '(Access-Control-Allow-Origin), and that an https page may load it ' +
+          '(browsers block plain http except localhost and .onion in Tor Browser).'
+    };
+  }
+}
+
+// =====================================================
 // PROVIDER HEALTH
 // =====================================================
 
 export function getNodeHealth() {
-  return API_NODES.map(node => {
-    const state = nodeState.get(node.base);
+  const ranked = getRankedNodes();
+
+  return ranked.map((node, i) => {
+    const state = ensureState(node.base);
 
     return {
       name: node.name,
       base: node.base,
+      custom: !!node.custom,
+      preferred: i === 0,
       score: state.score,
       success: state.success,
       failure: state.failure,
-      latency:
-        state.latency === null
-          ? null
-          : Math.round(state.latency),
-      lastSuccess: state.lastSuccess
+      latency: state.latency === null ? null : Math.round(state.latency),
+      lastSuccess: state.lastSuccess,
+      lastError: state.lastError
     };
   });
 }
@@ -303,24 +526,9 @@ export function getNodeHealth() {
 
 export async function benchmarkNodes() {
   await Promise.all(
-    API_NODES.map(async node => {
-      const start = performance.now();
-
-      try {
-        const r = await fetchWithTimeout(
-          node.base + '/blocks/tip/height',
-          5000
-        );
-
-        if (!r.ok) {
-          throw new Error(`HTTP ${r.status}`);
-        }
-
-        markSuccess(node.base, performance.now() - start);
-      } catch (err) {
-        markFailure(node.base, err.name === 'AbortError');
-      }
-    })
+    activeProviders().map(node =>
+      fetchTextFrom(node.base, '/blocks/tip/height', 5000).catch(() => {})
+    )
   );
 }
 

@@ -10,12 +10,27 @@ or any static host.
 **[Live demo](https://bowo-prasetyo.github.io/bitcoin-explorer/)** ·
 **[Vision and roadmap](VISION.md)**
 
-> **Status:** today the explorer displays what its providers return. The
-> in-browser verification described in [VISION.md](VISION.md) is the next
-> major milestone; the Merkle-root code it builds on is in `spv.js` and
-> tested, but not yet shown in the UI.
+Blocks and transactions carry **verification badges**: your browser
+fetches the raw data (block headers, raw transactions, Merkle proofs) and
+checks the cryptography itself, then says exactly what it checked and what
+it can't.
 
 ---
+
+## What your browser verifies, and what it doesn't
+
+| Where | Checked locally | Not proven |
+|---|---|---|
+| **Block** | The 80-byte header hashes to the block id. The hash meets the difficulty target in the header. That target is within mainnet limits. Time, Merkle root and previous block match what's shown. | That the target is the *right* difficulty for that height, or that the block is on the chain with the most work. |
+| **Block transactions** | The full txid list rebuilds the header's Merkle root. The count matches. The transactions on the page are in that list, in order. | (A block's transactions can't be hidden or reordered without failing this.) |
+| **Transaction contents** | The raw transaction hashes to its txid. Output amounts and scripts match what's shown. Spent outputs match the inputs shown. | Input amounts, and therefore the fee, come from the spent outputs, which are checked on their own pages. |
+| **Transaction inclusion** | A Merkle proof leads from the txid to a block header that passes the proof-of-work checks above. | Same limits as the block check. |
+| **Chain tip** (home page, Providers page) | Every provider is asked independently. Each tip header's proof of work is checked. The tips are compared, telling "one block behind on the same chain" from "a different chain". | With a single provider, there is nothing to compare. |
+| **Address** | Nothing yet. | Balances and history need the full UTXO set; they come from the provider. |
+
+A failing check is shown in red with the specific check that failed. A
+check that couldn't run, for example because a provider was unreachable,
+is shown in grey and never as a pass.
 
 ## What it does today
 
@@ -37,13 +52,24 @@ or any static host.
   ("Load older transactions" pages back through history).
 - **Charts:** mempool transaction count over time, sampled by your browser
   while the page is open.
+- **Providers:** live health of each provider, whether they agree on the
+  chain tip, and a form to use your own endpoint.
 
 ### Data providers and failover
 
-Requests go to two Esplora-compatible providers with known operators:
+By default, requests go to two Esplora-compatible providers with known
+operators:
 
 - [Blockstream](https://blockstream.info/)
 - [mempool.space](https://mempool.space/)
+
+On the **Providers** page you can add **your own Esplora endpoint**, such
+as a self-hosted [electrs](https://github.com/Blockstream/electrs) or
+mempool backend, or one reached over Tor. It is tried first, with the
+public providers as fallback, or used **exclusively** so no lookup leaves
+your infrastructure. The endpoint must send CORS headers. From the https
+site it must be https, unless it's on localhost or a `.onion` address in
+Tor Browser. The connection is tested before it can be saved.
 
 If one fails or times out (8 s), the next is tried. Providers are ranked by
 a simple health score, and the last working provider is preferred on the
@@ -68,9 +94,10 @@ is visible.
 ### Privacy note
 
 Your lookups (addresses, transactions) are sent to the providers above,
-and to the second one if the first fails. Running entirely in the browser
-means there's no server of ours, not that the providers can't see your
-queries. Bringing your own endpoint is on the [roadmap](VISION.md).
+and to the next one if the first fails. The chain-tip check asks every
+provider, but only for the tip. Running entirely in the browser means
+there's no server of ours, not that the providers can't see your queries.
+To keep lookups private, use your own endpoint exclusively.
 
 ---
 
@@ -101,13 +128,15 @@ request.
 | File | Purpose |
 |---|---|
 | `index.html`, `app.js`, `router.js` | Entry point, app shell, routes |
-| `api.js` | Provider list, failover and health scoring |
+| `api.js` | Providers (incl. your own endpoint), failover, health scoring |
 | `refresh.js` | Cache-first refresh with freshness status |
 | `db.js` | IndexedDB wrapper and cache pruning |
 | `search.js` | Classifies search input (height, hash, address, invalid) |
 | `format.js` | BTC amounts, fee rates, times |
-| `spv.js` | Verification primitives (Merkle root); not yet used by the UI |
-| `components/` | Views and the shared `DataStatus` indicator |
+| `spv.js` | Verification primitives: header proof of work, Merkle roots and proofs, txids from raw transactions |
+| `verify.js` | Runs the checks behind each badge |
+| `consensus.js` | Compares chain tips across providers |
+| `components/` | Views, plus the shared `DataStatus` and `VerifyBadge` |
 | `tests/` | Unit tests |
 
 ## License
