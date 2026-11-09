@@ -19,9 +19,17 @@ reads as a block, which ties it to Bitcoin without using the ₿ symbol.
 | `../favicon.svg` | Simplified mark: one flat shape, taller, heavier check. For 16–32 px. |
 | `../favicon.ico` | 16, 32 and 48 px raster of `favicon.svg`, for older browsers. |
 | `../apple-touch-icon.png` | 180 px, the mark on an opaque ink tile (iOS fills transparency with black). |
+| `social-preview.png` | 1280×640 image for link previews: the repository's Social preview (Settings → General). |
 
 The wordmark is converted to outlines, so the SVGs don't depend on any
 installed font.
+
+## Social preview
+
+`social-preview.png` shows the name, the tagline and the four checks
+Assay runs (proof of work, Merkle proofs, difficulty retargets, total
+chainwork) next to the mark. The faint hex texture is the genesis
+block's hash, so even the background is real chain data.
 
 ## Colours
 
