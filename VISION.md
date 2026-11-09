@@ -88,11 +88,17 @@ transaction.
   recomputes the fee from verified inputs and outputs. Large
   transactions ask before downloading more than 25 spent transactions.
 
+### Total work behind the tip ✅
+
+- The home page can add up the chain's total proof of work ("chainwork")
+  exactly, from one proof-of-work-checked header per difficulty period,
+  and show it in the same form as Bitcoin Core so it can be compared
+  with your own node. Opt-in the first time; cached afterwards.
+
 ### Next ideas
 
 - Extend the difficulty check further back (several retarget steps), or
   link every header between the period start and the block.
-- Show the cumulative work behind the tip.
 
 ### Later
 
