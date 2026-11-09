@@ -18,6 +18,15 @@ header a {
   text-decoration: none;
 }
 
+header .brand {
+  display: flex;
+  margin-right: 8px;
+}
+
+header .brand img {
+  display: block;
+}
+
 .container {
   padding: 20px;
 }

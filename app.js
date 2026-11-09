@@ -30,7 +30,9 @@ const App = {
   <div>
 
     <header>
-      <router-link to="/">Home</router-link>
+      <router-link to="/" class="brand" aria-label="Assay home">
+        <img src="brand/assay-logo.svg" alt="Assay" width="90" height="24">
+      </router-link>
       <router-link to="/charts">Charts</router-link>
       <router-link to="/providers">Providers</router-link>
       <router-link
