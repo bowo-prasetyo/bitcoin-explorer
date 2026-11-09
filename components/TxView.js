@@ -3,7 +3,9 @@ import { getTx } from '../api.js';
 import { put } from '../db.js';
 
 import {
-  createSmartRefresher
+  createSmartRefresher,
+  createStatus,
+  CACHE_TTL
 } from '../refresh.js';
 
 export default {
@@ -15,212 +17,135 @@ export default {
 
       <h2>Transaction</h2>
 
-      <div
-        class="hash"
-        v-if="tx.txid"
-      >
-        {{ tx.txid }}
-      </div>
+      <div class="hash">{{ txid }}</div>
 
-      <div v-else>
-        Loading transaction...
-      </div>
+      <data-status :status="status" what="transaction"></data-status>
 
-      <br>
+      <template v-if="tx">
 
-      <div>
-        Fee:
-        {{ tx.fee }}
-        satoshis (sats)
-      </div>
+        <div>Fee: {{ tx.fee }} satoshis (sats)</div>
 
-      <div>
-        Weight:
-        {{ tx.weight }}
-      </div>
+        <div>Weight: {{ tx.weight }}</div>
 
-      <div>
-        Confirmed:
-        {{ tx.status.confirmed }}
-      </div>
+        <div>Confirmed: {{ tx.status.confirmed }}</div>
 
-      <div
-        v-if="tx.status.block_height"
-      >
-        Block Height:
-        {{ tx.status.block_height }}
-      </div>
+        <div v-if="tx.status.block_height">
+          Block Height: {{ tx.status.block_height }}
+        </div>
+
+      </template>
 
     </div>
 
-    <div class="card">
+    <template v-if="tx">
 
-      <h3>
-        Inputs
-      </h3>
+      <div class="card">
 
-      <div
-        v-if="tx.vin.length === 0"
-      >
-        No inputs
+        <h3>Inputs</h3>
+
+        <div v-if="tx.vin.length === 0" class="empty">
+          No inputs
+        </div>
+
+        <div v-for="(vin, index) in tx.vin" :key="index">
+
+          <div v-if="vin.is_coinbase" class="hash">
+            Coinbase (newly minted coins)
+          </div>
+
+          <router-link
+            v-else-if="vin.prevout?.scriptpubkey_address"
+            class="hash"
+            :to="'/address/' + vin.prevout.scriptpubkey_address"
+          >
+            {{ vin.prevout.scriptpubkey_address }}
+          </router-link>
+
+          <div v-else class="hash empty">
+            No address (non-standard script)
+          </div>
+
+        </div>
+
       </div>
 
-      <div
-  v-for="(vin, index) in tx.vin"
-  :key="index"
->
+      <div class="card">
 
-  <!-- NORMAL INPUT -->
-  <router-link
-    v-if="vin.prevout?.scriptpubkey_address"
-    class="hash"
-    :to="
-      '/address/' +
-      vin.prevout.scriptpubkey_address
-    "
-  >
-    {{ vin.prevout.scriptpubkey_address }}
-  </router-link>
+        <h3>Outputs</h3>
 
-  <!-- COINBASE INPUT -->
-  <div
-    v-else
-    class="hash"
-  >
-    Coinbase
-  </div>
+        <div v-if="tx.vout.length === 0" class="empty">
+          No outputs
+        </div>
 
-</div>
-</div>
+        <div v-for="(vout, index) in tx.vout" :key="index">
 
-    <div class="card">
+          <router-link
+            v-if="vout.scriptpubkey_address"
+            class="hash"
+            :to="'/address/' + vout.scriptpubkey_address"
+          >
+            {{ vout.scriptpubkey_address }}
+          </router-link>
 
-      <h3>
-        Outputs
-      </h3>
+          <div v-else-if="vout.scriptpubkey_type === 'op_return'" class="hash empty">
+            OP_RETURN (data, no address)
+          </div>
 
-      <div
-        v-if="tx.vout.length === 0"
-      >
-        No outputs
-      </div>
-      
-      <div
-        v-for="(vout, index) in tx.vout"
-        :key="index"
-      >
-      
-        <router-link
-          v-if="vout.scriptpubkey_address"
-          class="hash"
-          :to="'/address/' + vout.scriptpubkey_address"
-        >
-          {{ vout.scriptpubkey_address }}
-        </router-link>
-      
+          <div v-else class="hash empty">
+            No address ({{ vout.scriptpubkey_type || 'non-standard' }} script)
+          </div>
+
+        </div>
+
       </div>
 
-    </div>
+    </template>
 
   </div>
   `,
 
   data() {
-
     return {
-
-      tx: {
-
-        vin: [],
-        vout: [],
-        status: {}
-
-      },
-
-      refresher: null
+      txid: '',
+      tx: null,
+      status: createStatus()
     };
   },
 
   methods: {
-
-    // ===============================================
-    // LOAD TRANSACTION
-    // ===============================================
-
     async loadTransaction() {
+      const tx = await getTx(this.txid);
 
-      const txid =
-        this.$route.params.txid;
-
-      const tx =
-        await getTx(txid);
-
-      await put(
-        'txs',
-        tx
-      );
+      await put('txs', tx);
 
       return tx;
     }
   },
 
   mounted() {
+    this.txid = this.$route.params.txid;
 
-    const txid =
-      this.$route.params.txid;
+    this.refresher = createSmartRefresher({
+      cacheKey: 'tx-' + this.txid,
 
-    // ===============================================
-    // SMART AUTO REFRESH
-    // ===============================================
+      // Confirmed transactions don't change; pending ones do.
+      cacheTTL: tx =>
+        tx?.status?.confirmed
+          ? CACHE_TTL.txConfirmed
+          : CACHE_TTL.txPending,
 
-    this.refresher =
-      createSmartRefresher({
+      fetchFn: this.loadTransaction,
+      status: this.status,
+      onUpdate: data => { this.tx = data; },
 
-        cacheKey:
-          'tx-' + txid,
-
-        cacheTTL:
-          15000,
-
-        fetchFn:
-          this.loadTransaction,
-
-        onUpdate:
-          (data, cached) => {
-
-            this.tx = data;
-
-            console.log(
-
-              cached
-                ? 'Transaction from cache'
-                : 'Transaction from network'
-
-            );
-          },
-
-        // ===========================================
-        // STOP AFTER CONFIRMATION
-        // ===========================================
-
-        shouldStop: () => {
-
-          return (
-            this.tx?.status?.confirmed === true
-          );
-        }
-      });
+      // Stop polling once confirmed.
+      shouldStop: () => this.tx?.status?.confirmed === true
+    });
 
     this.refresher.start();
   },
 
   unmounted() {
-
-    // Stop refresher
-
-    if (this.refresher) {
-
-      this.refresher.stop();
-    }
+    this.refresher?.stop();
   }
 };

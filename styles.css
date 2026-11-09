@@ -75,3 +75,40 @@ a:visited {
 a:active {
   color: #ffffff;
 }
+
+/* ---------- data status ---------- */
+
+.muted {
+  color: #9a9a9a;
+}
+
+.small {
+  font-size: 0.85em;
+}
+
+.data-status {
+  margin: 4px 0 10px;
+}
+
+.notice {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid;
+}
+
+.notice-error {
+  background: #2a1515;
+  border-color: #ef5350;
+  color: #ffcdd2;
+}
+
+.notice-warn {
+  background: #2a2412;
+  border-color: #ffb300;
+  color: #ffe082;
+}
+
+.empty {
+  color: #9a9a9a;
+  font-style: italic;
+}

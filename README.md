@@ -1,204 +1,110 @@
 # bitcoin-explorer
 
-Client-Side Bitcoin Explorer Browser App
+A Bitcoin explorer that runs entirely in your browser, built toward
+**verifying** blockchain data rather than trusting it.
 
-A lightweight browser-native Bitcoin explorer built entirely with client-side JavaScript using Vue, Vue Router, IndexedDB, Chart.js, and public Bitcoin APIs.
+It is a static site (Vue, Vue Router, Chart.js, IndexedDB) that reads from
+public Esplora APIs. There is no backend; it can be hosted on GitHub Pages
+or any static host.
 
-The application runs fully in the browser and can be hosted statically on GitHub Pages without requiring any backend server.
+**[Live demo](https://bowo-prasetyo.github.io/bitcoin-explorer/)** ·
+**[Vision and roadmap](VISION.md)**
 
----
-
-## Live Demo
-
-[Live Demo](https://bowo-prasetyo.github.io/bitcoin-explorer/?utm_source=chatgpt.com)
-
----
-
-## GitHub Repository
-
-[GitHub Repository](https://github.com/bowo-prasetyo/bitcoin-explorer/?utm_source=chatgpt.com)
+> **Status:** today the explorer displays what its providers return. The
+> in-browser verification described in [VISION.md](VISION.md) is the next
+> major milestone; the Merkle-root code it builds on is in `spv.js` and
+> tested, but not yet shown in the UI.
 
 ---
 
-# Features
+## What it does today
 
-## Blockchain Explorer
+### Explorer
 
-* Latest blockchain tip
-* Block explorer
-* Transaction explorer
-* Address explorer
-* Recent blocks overview
-* Mempool monitoring
-* Fee estimation viewer
-* Fee histogram visualization
+- **Home:** chain tip, recent blocks, mempool size and fees, fee estimates
+  by confirmation target, fee histogram.
+- **Block:** height, time, transaction count, confirmations, transaction
+  list (first 25 transactions).
+- **Transaction:** fee, weight, confirmation status, input and output
+  addresses (OP_RETURN and non-standard outputs are labelled).
+- **Address:** confirmed and pending funded/spent totals and transaction
+  counts.
+- **Charts:** mempool transaction count over time, sampled by your browser
+  while the page is open.
+- **Search:** block hash, txid or address.
 
----
+### Data providers and failover
 
-## Smart API Failover System
+Requests go to two Esplora-compatible providers with known operators:
 
-The explorer includes an advanced multi-node failover layer:
+- [Blockstream](https://blockstream.info/)
+- [mempool.space](https://mempool.space/)
 
-* Multiple public Bitcoin API nodes
-* Automatic failover
-* Timeout handling
-* Health scoring
-* Latency tracking
-* Preferred node caching
-* Background benchmarking
+If one fails or times out (8 s), the next is tried. Providers are ranked by
+a simple health score, and the last working provider is preferred on the
+next visit. A "not found" answer is treated as an answer, not as a
+provider failure. Providers are re-checked every 5 minutes while the tab
+is visible.
 
-Supported public APIs include:
+### Caching and refresh
 
-* Blockstream
-* Mempool.space
-* Additional compatible mirrors
+- Every view shows its last cached data from IndexedDB immediately,
+  labelled with its age, then refreshes it.
+- While cached data is younger than its time-to-live (10 s to 30 s for live
+  data, 1 h for confirmed transactions), no network request is made.
+- If the providers can't be reached, cached data stays on screen with a
+  warning instead of a blank page.
+- Polling is every 10 s while you're active and 30 s when idle. It pauses
+  in background tabs and refreshes as soon as you return. It stops once
+  there's nothing left to watch (e.g. a transaction confirms).
 
----
+### Privacy note
 
-## Smart Auto Refresh System
-
-Adaptive refresh architecture designed for blockchain data:
-
-* Visibility-aware refresh
-* Automatic pause on hidden tabs
-* Adaptive polling intervals
-* IndexedDB-assisted refresh
-* Smart cache expiration
-* Reduced unnecessary API traffic
-
----
-
-## IndexedDB Cache
-
-The explorer stores selected blockchain data locally using IndexedDB for:
-
-* Faster reloads
-* Reduced API usage
-* Offline-friendly behavior
-* Cached refresh recovery
-
-Cached data includes:
-
-* Blocks
-* Transactions
-* Mempool state
-* Fee estimates
-* Recent blockchain states
+Your lookups (addresses, transactions) are sent to the providers above,
+and to the second one if the first fails. Running entirely in the browser
+means there's no server of ours, not that the providers can't see your
+queries. Bringing your own endpoint is on the [roadmap](VISION.md).
 
 ---
 
-## Charts and Visualization
+## Running locally
 
-Built using Chart.js:
+Any static file server works:
 
-* Fee histogram
-* Mempool congestion visualization
-* Real-time network state monitoring
+```bash
+python3 -m http.server 8000
+```
 
----
+Then open <http://localhost:8000>.
 
-## Browser-Only Architecture
+Dependencies load from CDNs at pinned versions with Subresource Integrity
+(see `index.html`).
 
-The application is intentionally designed as:
+## Tests
 
-* Fully client-side
-* Static-host friendly
-* No backend server
-* No database server
-* No Node.js runtime required in production
+```bash
+node --test tests/*.test.mjs
+```
 
-This allows deployment directly to:
+Requires Node 20 or newer. CI runs the same command on every push and pull
+request.
 
-* GitHub Pages
-* Static hosting providers
-* CDN hosting
+## Project layout
 
----
+| File | Purpose |
+|---|---|
+| `index.html`, `app.js`, `router.js` | Entry point, app shell, routes |
+| `api.js` | Provider list, failover and health scoring |
+| `refresh.js` | Cache-first refresh with freshness status |
+| `db.js` | IndexedDB wrapper |
+| `spv.js` | Verification primitives (Merkle root); not yet used by the UI |
+| `components/` | Views and the shared `DataStatus` indicator |
+| `tests/` | Unit tests |
 
-# Technology Stack
+## License
 
-## Frontend
+MIT, see [LICENSE](LICENSE).
 
-* Vue.js (CDN)
-* Vue Router
-* Chart.js
+## Assisted by
 
-## Storage
-
-* IndexedDB
-
-## Networking
-
-* Fetch API
-* Public Bitcoin REST APIs
-
----
-
-# Current Blockchain States Displayed
-
-## Blockchain Tip
-
-* Latest block height
-* Latest block hash
-* Block timestamp
-
-## Recent Blocks
-
-* Height
-* Transaction count
-* Block size
-* Block weight
-
-## Mempool State
-
-* Pending transaction count
-* Queue virtual size (vBytes)
-* Total pending fees
-* Fee histogram
-
-## Fee Estimation State
-
-* Estimated sat/vB rates
-* Multiple confirmation targets
-
----
-
-# Project Goals
-
-This project explores the idea that modern browsers can function as lightweight blockchain clients using:
-
-* IndexedDB for storage
-* REST APIs for blockchain access
-* Smart caching and synchronization
-* Visualization and monitoring tools
-
-The application demonstrates how much blockchain infrastructure can now run entirely inside the browser without dedicated backend services.
-
----
-
-# Future Ideas
-
-Potential future enhancements:
-
-* SPV verification
-* Merkle proof verification
-* WebRTC peer communication
-* WebSocket live updates
-* Transaction broadcasting
-* Wallet integration
-* Lightning Network monitoring
-* Advanced mempool analytics
-* Historical charts
-* Progressive Web App (PWA) support
-
----
-
-# License
-
-MIT License
-
----
-
-# Assisted By
-
-[ChatGPT](https://chatgpt.com/)
+[ChatGPT](https://chatgpt.com/) and [Claude Code](https://claude.com/claude-code).

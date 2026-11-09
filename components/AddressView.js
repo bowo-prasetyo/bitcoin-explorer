@@ -1,7 +1,9 @@
 import { getAddress } from '../api.js';
 
 import {
-  createSmartRefresher
+  createSmartRefresher,
+  createStatus,
+  CACHE_TTL
 } from '../refresh.js';
 
 export default {
@@ -11,59 +13,35 @@ export default {
 
     <div class="card">
 
-      <h2>
-        Address
-      </h2>
+      <h2>Address</h2>
 
-      <div class="hash">
-        {{ address }}
-      </div>
+      <div class="hash">{{ address }}</div>
 
-      <hr>
+      <data-status :status="status" what="address"></data-status>
 
-      <h3>
-        Chain Stats
-      </h3>
+      <template v-if="data">
 
-      <div>
-        Funded:
-        {{ data.chain_stats.funded_txo_sum }}
-        satoshis (sats)
-      </div>
+        <hr>
 
-      <div>
-        Spent:
-        {{ data.chain_stats.spent_txo_sum }}
-        satoshis (sats)
-      </div>
+        <h3>Chain Stats</h3>
 
-      <div>
-        Transactions:
-        {{ data.chain_stats.tx_count }}
-      </div>
+        <div>Funded: {{ data.chain_stats.funded_txo_sum }} satoshis (sats)</div>
 
-      <hr>
+        <div>Spent: {{ data.chain_stats.spent_txo_sum }} satoshis (sats)</div>
 
-      <h3>
-        Mempool Stats
-      </h3>
+        <div>Transactions: {{ data.chain_stats.tx_count }}</div>
 
-      <div>
-        Pending TX:
-        {{ data.mempool_stats.tx_count }}
-      </div>
+        <hr>
 
-      <div>
-        Pending Funded:
-        {{ data.mempool_stats.funded_txo_sum }}
-        satoshis (sats)
-      </div>
+        <h3>Mempool Stats</h3>
 
-      <div>
-        Pending Spent:
-        {{ data.mempool_stats.spent_txo_sum }}
-        satoshis (sats)
-      </div>
+        <div>Pending TX: {{ data.mempool_stats.tx_count }}</div>
+
+        <div>Pending Funded: {{ data.mempool_stats.funded_txo_sum }} satoshis (sats)</div>
+
+        <div>Pending Spent: {{ data.mempool_stats.spent_txo_sum }} satoshis (sats)</div>
+
+      </template>
 
     </div>
 
@@ -71,94 +49,37 @@ export default {
   `,
 
   data() {
-
     return {
-
       address: '',
-
-      data: {
-
-        chain_stats: {},
-
-        mempool_stats: {}
-      },
-
-      refresher: null
+      data: null,
+      status: createStatus()
     };
   },
 
   methods: {
-
-    // ===============================================
-    // LOAD ADDRESS DATA
-    // ===============================================
-
-    async loadAddressData() {
-
-      return await getAddress(
-        this.address
-      );
+    loadAddressData() {
+      return getAddress(this.address);
     }
   },
 
   mounted() {
+    this.address = this.$route.params.addr;
 
-    this.address =
-      this.$route.params.addr;
+    this.refresher = createSmartRefresher({
+      cacheKey: 'addr-' + this.address,
+      cacheTTL: CACHE_TTL.address,
+      fetchFn: this.loadAddressData,
+      status: this.status,
+      onUpdate: data => { this.data = data; },
 
-    // ===============================================
-    // SMART AUTO REFRESH
-    // ===============================================
-
-    this.refresher =
-      createSmartRefresher({
-
-        cacheKey:
-          'addr-' + this.address,
-
-        cacheTTL:
-          30000,
-
-        fetchFn:
-          this.loadAddressData,
-
-        onUpdate:
-          (data, cached) => {
-
-            this.data = data;
-
-            console.log(
-
-              cached
-                ? 'Address from cache'
-                : 'Address from network'
-
-            );
-          },
-
-        // ===========================================
-        // STOP IF NO MEMPOOL ACTIVITY
-        // ===========================================
-
-        shouldStop: () => {
-
-          return (
-
-            this.data?.mempool_stats
-              ?.tx_count === 0
-
-          );
-        }
-      });
+      // Nothing pending for this address: nothing to watch.
+      shouldStop: () => this.data?.mempool_stats?.tx_count === 0
+    });
 
     this.refresher.start();
   },
 
   unmounted() {
-
-    if (this.refresher) {
-
-      this.refresher.stop();
-    }
+    this.refresher?.stop();
   }
 };

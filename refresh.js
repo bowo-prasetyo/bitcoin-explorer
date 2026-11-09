@@ -1,5 +1,15 @@
 // refresh.js
-// Smart hybrid auto-refresh system for Bitcoin Explorer
+// Cache-first auto-refresh for Bitcoin Explorer.
+//
+// Each refresher:
+//   1. shows whatever is cached in IndexedDB immediately, however old,
+//      so the page is never blank when the network is down;
+//   2. skips the network while the cache is younger than its TTL;
+//   3. otherwise fetches, caches and shows fresh data;
+//   4. reports loading / error / last-updated state through a reactive
+//      `status` object so views can say how current their data is;
+//   5. polls faster while the user is active, pauses in hidden tabs and
+//      refreshes as soon as the tab becomes visible again.
 
 import { get, put } from './db.js';
 
@@ -8,82 +18,74 @@ import { get, put } from './db.js';
 // =====================================================
 
 const REFRESH_CONFIG = {
+  FAST_INTERVAL: 10000,      // user active
+  NORMAL_INTERVAL: 30000,    // user idle
+  HIDDEN_RECHECK: 120000,    // hidden tab: only re-check visibility
+  USER_ACTIVE_WINDOW: 30000
+};
 
-  FAST_INTERVAL: 10000,      // 10 sec
-  NORMAL_INTERVAL: 30000,    // 30 sec
-  SLOW_INTERVAL: 120000,     // 2 min
-
-  USER_ACTIVE_WINDOW: 30000, // 30 sec
-
-  CACHE_TTL: {
-
-    mempool: 10000,
-    latestBlock: 15000,
-    txPending: 15000,
-    txConfirmed: 3600000,
-    address: 60000
-
-  }
-
+// How long cached data counts as fresh (ms). Fresh cache is used without
+// a network request.
+export const CACHE_TTL = {
+  mempool: 10000,
+  latestBlock: 15000,
+  recentBlocks: 15000,
+  feeEstimates: 30000,
+  block: 30000,
+  txPending: 15000,
+  txConfirmed: 3600000,
+  address: 30000
 };
 
 // =====================================================
-// USER ACTIVITY TRACKING
+// USER ACTIVITY & VISIBILITY
 // =====================================================
 
 let lastUserActivity = Date.now();
 
-[
-  'mousemove',
-  'keydown',
-  'click',
-  'touchstart'
-].forEach(event => {
-
-  window.addEventListener(event, () => {
-
-    lastUserActivity = Date.now();
-
-  });
-
+['mousemove', 'keydown', 'click', 'touchstart'].forEach(event => {
+  window.addEventListener(
+    event,
+    () => { lastUserActivity = Date.now(); },
+    { passive: true }
+  );
 });
 
 function isUserActive() {
-
   return (
     Date.now() - lastUserActivity <
     REFRESH_CONFIG.USER_ACTIVE_WINDOW
   );
 }
 
-// =====================================================
-// PAGE VISIBILITY
-// =====================================================
-
 function isPageVisible() {
-
-  return (
-    document.visibilityState === 'visible'
-  );
+  return document.visibilityState === 'visible';
 }
 
-// =====================================================
-// ADAPTIVE INTERVAL
-// =====================================================
-
 function getAdaptiveInterval() {
-
   if (!isPageVisible()) {
-
     return null;
   }
 
-  if (isUserActive()) {
+  return isUserActive()
+    ? REFRESH_CONFIG.FAST_INTERVAL
+    : REFRESH_CONFIG.NORMAL_INTERVAL;
+}
 
-    return REFRESH_CONFIG.FAST_INTERVAL;
-  }
+// =====================================================
+// STATUS
+// =====================================================
 
-  return REFRESH_CONFIG.NORMAL_INTERVAL;
+// Create in a component's data() so it is reactive, then pass it to
+// createSmartRefresher and to <data-status>.
+export function createStatus() {
+  return {
+    loading: true,     // nothing to show yet
+    refreshing: false, // a network request is in flight
+    error: null,       // last error, cleared on success
+    updatedAt: null,   // when the shown data was fetched (ms)
+    cached: false      // shown data came from the local cache
+  };
 }
 
 // =====================================================
@@ -91,238 +93,171 @@ function getAdaptiveInterval() {
 // =====================================================
 
 async function loadCached(cacheKey) {
-
   try {
-
-    const cached =
-      await get('cache', cacheKey);
-
-    if (!cached) {
-      return null;
-    }
-
-    return cached;
-
+    return (await get('cache', cacheKey)) || null;
   } catch (err) {
-
-    console.warn(
-      'Cache load failed',
-      err
-    );
-
+    console.warn('Cache load failed', cacheKey, err);
     return null;
   }
 }
 
-async function saveCached(
-  cacheKey,
-  data
-) {
-
+async function saveCached(cacheKey, data, timestamp) {
   try {
-
-    await put('cache', {
-
-      id: cacheKey,
-
-      timestamp: Date.now(),
-
-      data
-
-    });
-
+    await put('cache', { id: cacheKey, timestamp, data });
   } catch (err) {
-
-    console.warn(
-      'Cache save failed',
-      err
-    );
+    console.warn('Cache save failed', cacheKey, err);
   }
-}
-
-function isCacheFresh(
-  cached,
-  ttl
-) {
-
-  if (!cached) {
-    return false;
-  }
-
-  return (
-    Date.now() - cached.timestamp <
-    ttl
-  );
 }
 
 // =====================================================
-// GENERIC SMART REFRESHER
+// SMART REFRESHER
 // =====================================================
 
 export function createSmartRefresher({
-
   cacheKey,
 
+  // number, or (cachedData) => number
   cacheTTL,
 
   fetchFn,
 
+  // (data, { cached: boolean, timestamp: ms }) => void
   onUpdate,
 
-  shouldStop = () => false
+  // optional reactive object from createStatus()
+  status = createStatus(),
 
+  shouldStop = () => false
 }) {
 
   let timer = null;
-
   let destroyed = false;
+  let inFlight = false;
+  let shownTimestamp = 0;
+
+  function ttlFor(data) {
+    return typeof cacheTTL === 'function'
+      ? cacheTTL(data)
+      : cacheTTL;
+  }
+
+  function show(data, cached, timestamp) {
+    shownTimestamp = timestamp;
+
+    status.loading = false;
+    status.cached = cached;
+    status.updatedAt = timestamp;
+
+    onUpdate(data, { cached, timestamp });
+  }
 
   async function refresh() {
-
-    if (destroyed) {
+    if (destroyed || inFlight) {
       return;
     }
 
-    // Stop if condition met
     if (shouldStop()) {
-
-      console.log(
-        'Auto refresh stopped:',
-        cacheKey
-      );
-
       stop();
-
       return;
     }
 
-    // Page hidden
     if (!isPageVisible()) {
-
-      console.log(
-        'Refresh paused (hidden tab)'
-      );
-
       scheduleNext();
-
       return;
     }
+
+    inFlight = true;
 
     try {
+      // 1. Cache first: show it if it is newer than what's on screen.
+      const cached = await loadCached(cacheKey);
 
-      // =================================================
-      // 1. Load cache instantly
-      // =================================================
-
-      const cached =
-        await loadCached(cacheKey);
-
-      if (
-        cached &&
-        isCacheFresh(
-          cached,
-          cacheTTL
-        )
-      ) {
-
-        console.log(
-          'Using cached data:',
-          cacheKey
-        );
-
-        onUpdate(
-          cached.data,
-          true
-        );
+      if (destroyed) {
+        return;
       }
 
-      // =================================================
-      // 2. Fetch fresh data
-      // =================================================
+      if (cached && cached.timestamp > shownTimestamp) {
+        show(cached.data, true, cached.timestamp);
+      }
 
-      const fresh =
-        await fetchFn();
+      // 2. Fresh enough? Skip the network.
+      if (
+        cached &&
+        Date.now() - cached.timestamp < ttlFor(cached.data)
+      ) {
+        return;
+      }
 
-      // =================================================
-      // 3. Save cache
-      // =================================================
+      // 3. Fetch, cache, show.
+      status.refreshing = true;
 
-      await saveCached(
-        cacheKey,
-        fresh
-      );
+      const fresh = await fetchFn();
+      const timestamp = Date.now();
 
-      // =================================================
-      // 4. Update UI
-      // =================================================
+      if (destroyed) {
+        return;
+      }
 
-      onUpdate(
-        fresh,
-        false
-      );
+      await saveCached(cacheKey, fresh, timestamp);
 
-      console.log(
-        'Fresh data updated:',
-        cacheKey
-      );
+      status.error = null;
+      show(fresh, false, timestamp);
 
     } catch (err) {
 
-      console.error(
-        'Refresh failed:',
-        cacheKey,
-        err
-      );
-    }
+      console.error('Refresh failed:', cacheKey, err);
 
-    scheduleNext();
+      if (destroyed) {
+        return;
+      }
+
+      status.error = err;
+      status.loading = false;
+
+      // The provider said this object doesn't exist; polling won't
+      // change that.
+      if (err?.kind === 'not_found') {
+        stop();
+      }
+
+    } finally {
+      inFlight = false;
+      status.refreshing = false;
+      scheduleNext();
+    }
   }
 
   function scheduleNext() {
-
     if (destroyed) {
       return;
     }
 
-    const interval =
-      getAdaptiveInterval();
+    clearTimeout(timer);
 
-    if (interval === null) {
+    const interval = getAdaptiveInterval();
 
-      // Hidden tab
-      timer = setTimeout(
-        scheduleNext,
-        REFRESH_CONFIG.SLOW_INTERVAL
-      );
+    timer = interval === null
+      ? setTimeout(scheduleNext, REFRESH_CONFIG.HIDDEN_RECHECK)
+      : setTimeout(refresh, interval);
+  }
 
-      return;
+  function onVisibilityChange() {
+    if (isPageVisible() && !destroyed) {
+      clearTimeout(timer);
+      refresh();
     }
-
-    timer = setTimeout(
-      refresh,
-      interval
-    );
   }
 
   function start() {
-
+    document.addEventListener('visibilitychange', onVisibilityChange);
     refresh();
   }
 
   function stop() {
-
     destroyed = true;
-
-    if (timer) {
-
-      clearTimeout(timer);
-    }
+    clearTimeout(timer);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
   }
 
-  return {
-
-    start,
-    stop
-
-  };
+  return { start, stop, refresh, status };
 }
