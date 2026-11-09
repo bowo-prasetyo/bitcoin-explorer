@@ -5,7 +5,15 @@ import assert from 'node:assert/strict';
 import {
   computeMerkleRoot,
   verifyMerkleRoot,
-  reverseHex
+  merkleRootFromProof,
+  reverseHex,
+  doubleSHA256,
+  parseHeader,
+  verifyHeaderPoW,
+  targetFromBits,
+  MAINNET_POW_LIMIT,
+  parseTransaction,
+  txidFromRaw
 } from '../spv.js';
 
 // Block 100000: four transactions.
@@ -55,4 +63,153 @@ test('tampered or reordered txids fail verification', async () => {
 
 test('reverseHex reverses byte order', () => {
   assert.equal(reverseHex('0a0b0c'), '0c0b0a');
+});
+
+// ---------------------------------------------------------------
+// Block headers & proof of work
+// ---------------------------------------------------------------
+
+const GENESIS_HASH =
+  '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f';
+const GENESIS_HEADER =
+  '0100000000000000000000000000000000000000000000000000000000000000' +
+  '000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa' +
+  '4b1e5e4a29ab5f49ffff001d1dac2b7c';
+
+const BLOCK_100000_HASH =
+  '000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506';
+const BLOCK_100000_HEADER =
+  '0100000050120119172a610421a6c3011dd330d9df07b63616c2cc1f1cd00200' +
+  '000000006657a9252aacd5c0b2940996ecff952228c3067cc38d4885efb5a4ac' +
+  '4247e9f337221b4d4c86041b0f2b5710';
+
+test('parseHeader reads block 100000', () => {
+  assert.deepEqual(parseHeader(BLOCK_100000_HEADER), {
+    version: 1,
+    previousBlockHash: '000000000002d01c1fccc21636b607dfd930d31d01c3a62104612a1719011250',
+    merkleRoot: BLOCK_100000_ROOT,
+    timestamp: 1293623863,
+    bits: 0x1b04864c,
+    nonce: 274148111
+  });
+  assert.throws(() => parseHeader('00'), /80 bytes/);
+});
+
+test('real headers pass every proof-of-work check', async () => {
+  for (const [header, hash, difficulty] of [
+    [GENESIS_HEADER, GENESIS_HASH, 1],
+    [BLOCK_100000_HEADER, BLOCK_100000_HASH, 14484.162]
+  ]) {
+    const r = await verifyHeaderPoW(header, hash);
+    assert.equal(r.ok, true, hash);
+    assert.deepEqual(r.checks, { hashMatches: true, meetsTarget: true, withinPowLimit: true });
+    assert.equal(r.difficulty, difficulty);
+  }
+});
+
+test('a tampered header fails the work check', async () => {
+  // Change the nonce: the header no longer hashes below its target.
+  const tampered = BLOCK_100000_HEADER.slice(0, -8) + '00000000';
+  const r = await verifyHeaderPoW(tampered, BLOCK_100000_HASH);
+  assert.equal(r.ok, false);
+  assert.equal(r.checks.hashMatches, false);
+  assert.equal(r.checks.meetsTarget, false);
+});
+
+test('a header under a different block id fails', async () => {
+  const r = await verifyHeaderPoW(GENESIS_HEADER, BLOCK_100000_HASH);
+  assert.equal(r.ok, false);
+  assert.equal(r.checks.hashMatches, false);
+  assert.equal(r.checks.meetsTarget, true);
+});
+
+test('targetFromBits and the mainnet limit', () => {
+  assert.equal(targetFromBits(0x1d00ffff), 0xffffn << 208n);
+  assert.equal(MAINNET_POW_LIMIT, 0xffffn << 208n);
+  assert.ok(targetFromBits(0x1d01ffff) > MAINNET_POW_LIMIT);
+  assert.equal(targetFromBits(0x03123456), 0x123456n);
+  assert.equal(targetFromBits(0x02123456), 0x1234n);
+  assert.throws(() => targetFromBits(0x04923456), /Negative/);
+});
+
+// ---------------------------------------------------------------
+// Merkle inclusion proofs
+// ---------------------------------------------------------------
+
+// Builds the Esplora-style branch (display order) for leaf `pos`.
+async function branchFor(txids, pos) {
+  let layer = txids.map(reverseHex);
+  let index = pos;
+  const branch = [];
+  while (layer.length > 1) {
+    const sibling = layer[index ^ 1] ?? layer[index];
+    branch.push(reverseHex(sibling));
+    const next = [];
+    for (let i = 0; i < layer.length; i += 2) {
+      next.push(await doubleSHA256(layer[i] + (layer[i + 1] ?? layer[i])));
+    }
+    layer = next;
+    index >>= 1;
+  }
+  return branch;
+}
+
+test('inclusion proofs for every tx in block 100000 reach the real root', async () => {
+  for (let pos = 0; pos < 4; pos++) {
+    const branch = await branchFor(BLOCK_100000_TXIDS, pos);
+    assert.equal(
+      await merkleRootFromProof(BLOCK_100000_TXIDS[pos], branch, pos),
+      BLOCK_100000_ROOT,
+      `pos ${pos}`
+    );
+  }
+});
+
+test('a proof with the wrong position or txid does not reach the root', async () => {
+  const branch = await branchFor(BLOCK_100000_TXIDS, 2);
+  assert.notEqual(await merkleRootFromProof(BLOCK_100000_TXIDS[2], branch, 3), BLOCK_100000_ROOT);
+  assert.notEqual(await merkleRootFromProof(BLOCK_100000_TXIDS[1], branch, 2), BLOCK_100000_ROOT);
+  await assert.rejects(merkleRootFromProof(BLOCK_100000_TXIDS[2], branch, 4), /Position/);
+});
+
+test('single-transaction block: empty branch, root is the txid', async () => {
+  assert.equal(await merkleRootFromProof(GENESIS_TXID, [], 0), GENESIS_TXID);
+});
+
+// ---------------------------------------------------------------
+// Raw transactions
+// ---------------------------------------------------------------
+
+const GENESIS_RAW =
+  '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff' +
+  '4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f' +
+  '72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffff' +
+  'ffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962' +
+  'e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00' +
+  '000000';
+
+test('txid from raw genesis coinbase', async () => {
+  assert.equal(await txidFromRaw(GENESIS_RAW), GENESIS_TXID);
+
+  const tx = parseTransaction(GENESIS_RAW);
+  assert.equal(tx.segwit, false);
+  assert.deepEqual(tx.vin, [{ txid: '00'.repeat(32), vout: 0xffffffff }]);
+  assert.equal(tx.vout.length, 1);
+  assert.equal(tx.vout[0].value, 5000000000);
+  assert.match(tx.vout[0].scriptpubkey, /^4104678afdb0/);
+});
+
+test('segwit serialization: witness does not change the txid', async () => {
+  // Same transaction with marker/flag and a one-item witness added.
+  const body = GENESIS_RAW.slice(8, -8);
+  const segwit = '01000000' + '0001' + body + '01' + '02abcd' + '00000000';
+
+  const tx = parseTransaction(segwit);
+  assert.equal(tx.segwit, true);
+  assert.equal(await txidFromRaw(segwit), GENESIS_TXID);
+});
+
+test('malformed raw transactions are rejected', () => {
+  assert.throws(() => parseTransaction(GENESIS_RAW.slice(0, -10)), /Truncated/);
+  assert.throws(() => parseTransaction(GENESIS_RAW + '00'), /Trailing/);
 });
