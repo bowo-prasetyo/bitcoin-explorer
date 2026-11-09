@@ -162,7 +162,7 @@ export async function verifyBlockHeader(block) {
     const checks = [
       ...powChecks(pow),
       {
-        label: 'Displayed details match the header (time, merkle root, previous block)',
+        label: 'Displayed details match the header (time, Merkle root, previous block)',
         ok:
           h.timestamp === block.timestamp &&
           h.merkleRoot === block.merkle_root &&
@@ -293,7 +293,7 @@ export async function verifyBlockTransactions(block, merkleRoot, shown = [], fir
     const root = await computeMerkleRoot(txids);
 
     const checks = [
-      { label: `All ${txids.length.toLocaleString('en-US')} txids rebuild the header's merkle root`, ok: root === merkleRoot },
+      { label: `All ${txids.length.toLocaleString('en-US')} txids rebuild the header's Merkle root`, ok: root === merkleRoot },
       { label: 'Transaction count matches', ok: txids.length === block.tx_count },
       {
         label: 'Transactions on this page are in that list, in order',

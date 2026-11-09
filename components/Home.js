@@ -90,22 +90,22 @@ export default {
 
   <!-- SATOSHI NAKAMOTO LEGACY -->
   <div class="card">
-    <h2>Legacy of Satoshi Nakamoto:</h2>
+    <h2>Legacy of Satoshi Nakamoto</h2>
     <div class="hash">
-      Genesis Address: <a href="#/address/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</a>
+      Genesis address: <a href="#/address/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</a>
     </div>
     <div class="hash">
-      Genesis Transaction: <a href="#/tx/4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b">4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b</a>
+      Genesis transaction: <a href="#/tx/4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b">4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b</a>
     </div>
     <div class="hash">
-      Genesis Block: <a href="#/block/000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f">000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f</a>
+      Genesis block: <a href="#/block/000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f">000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f</a>
     </div>
   </div>
 
   <!-- BLOCKCHAIN TIP -->
   <div class="card">
 
-    <h2>Blockchain Tip</h2>
+    <h2>Chain tip</h2>
 
     <data-status :status="latestStatus" what="block"></data-status>
 
@@ -139,7 +139,7 @@ export default {
         ({{ Math.ceil(headerCount * 80 / 1024) }} KB)
         the first time. After that, only new ones.
       </p>
-      <button @click="enableChainWork">Add it up</button>
+      <button @click="enableChainWork">Add up the total work</button>
     </template>
 
     <template v-else>
@@ -156,9 +156,13 @@ export default {
   <!-- RECENT BLOCKS -->
   <div class="card">
 
-    <h2>Recent Blocks</h2>
+    <h2>Recent blocks</h2>
 
     <data-status :status="blocksStatus" what="block list"></data-status>
+
+    <provider-note v-if="recentBlocks.length">
+      this list comes from the data provider. Open a block to check it.
+    </provider-note>
 
     <div v-if="recentBlocks.length" class="table-scroll">
       <table>
@@ -207,14 +211,23 @@ export default {
       <dd>{{ formatBtc(mempool.total_fee) }}</dd>
     </dl>
 
+    <provider-note v-if="mempool.count !== undefined">
+      this is the provider's mempool. Every node keeps its own, and they
+      can differ.
+    </provider-note>
+
   </div>
 
   <!-- FEE ESTIMATES -->
   <div class="card">
 
-    <h2>Fee Estimates</h2>
+    <h2>Fee estimates</h2>
 
     <data-status :status="feesStatus" what="fee estimate"></data-status>
+
+    <provider-note v-if="feeRows.length">
+      the provider's estimate, not a guarantee.
+    </provider-note>
 
     <div v-if="feeRows.length" class="table-scroll">
       <table>
@@ -245,9 +258,13 @@ export default {
   <!-- HISTOGRAM -->
   <div class="card">
 
-    <h2>Fee Histogram</h2>
+    <h2>Fee histogram</h2>
 
     <data-status :status="mempoolStatus" what="mempool"></data-status>
+
+    <provider-note v-if="mempool.fee_histogram?.length">
+      built from the provider's mempool.
+    </provider-note>
 
     <div
       v-if="mempool.count !== undefined && !mempool.fee_histogram?.length"

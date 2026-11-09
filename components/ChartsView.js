@@ -20,7 +20,7 @@ export default {
 
     <div class="card">
 
-      <h2>Mempool Transaction Count</h2>
+      <h2>Mempool transaction count</h2>
 
       <p class="muted small">
         Sampled by this browser while this page is open, so gaps mean the
@@ -93,7 +93,7 @@ export default {
           data: {
             labels: [],
             datasets: [{
-              label: 'Mempool TX Count',
+              label: 'Pending transactions',
               data: []
             }]
           },

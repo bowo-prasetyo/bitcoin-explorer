@@ -13,7 +13,7 @@ const DEFAULT_PROVIDERS = [
     base: 'https://blockstream.info/api'
   },
   {
-    name: 'Mempool.space',
+    name: 'mempool.space',
     base: 'https://mempool.space/api'
   }
 ];
