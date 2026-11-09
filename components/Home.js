@@ -27,7 +27,21 @@ import {
 
 import { now } from './DataStatus.js';
 
-import { verifyTip } from '../verify.js';
+import {
+  verifyTip,
+  verifyChainWork,
+  chainWorkHeaderCount
+} from '../verify.js';
+
+const CHAINWORK_KEY = 'btc_explorer_chainwork';
+
+function readFlag() {
+  try { return localStorage.getItem(CHAINWORK_KEY) === '1'; } catch { return false; }
+}
+
+function writeFlag() {
+  try { localStorage.setItem(CHAINWORK_KEY, '1'); } catch { /* ignore */ }
+}
 
 // Confirmation targets worth showing, out of the ~28 Esplora returns.
 const FEE_TARGETS = [1, 3, 6, 12, 24, 144, 504, 1008];
@@ -105,6 +119,32 @@ export default {
     </dl>
 
     <verify-badge v-if="latest.id" :result="tipCheck"></verify-badge>
+
+  </div>
+
+  <!-- TOTAL WORK -->
+  <div class="card" v-if="latest.id">
+
+    <h2>Work behind the tip</h2>
+
+    <template v-if="!chainWorkEnabled">
+      <p class="muted">
+        How much proof of work stands behind this chain? Your browser can add
+        it up exactly from one header per difficulty period, about
+        {{ formatNumber(headerCount) }} {{ headerCount === 1 ? 'header' : 'headers' }}
+        ({{ Math.ceil(headerCount * 80 / 1024) }} KB)
+        the first time. After that, only new ones.
+      </p>
+      <button @click="enableChainWork">Add it up</button>
+    </template>
+
+    <template v-else>
+      <div v-if="chainWorkProgress && !chainWorkCheck" class="muted">
+        Checking headers… {{ formatNumber(chainWorkProgress.done) }} / {{ formatNumber(chainWorkProgress.total) }}
+        <progress :value="chainWorkProgress.done" :max="chainWorkProgress.total"></progress>
+      </div>
+      <verify-badge :result="chainWorkCheck"></verify-badge>
+    </template>
 
   </div>
 
@@ -235,11 +275,20 @@ export default {
       feesStatus: createStatus(),
 
       tipCheck: null,
-      tipCheckedFor: null
+      tipCheckedFor: null,
+
+      chainWorkEnabled: readFlag(),
+      chainWorkCheck: null,
+      chainWorkProgress: null,
+      chainWorkFor: null
     };
   },
 
   computed: {
+    headerCount() {
+      return this.latest.height === undefined ? 0 : chainWorkHeaderCount(this.latest.height);
+    },
+
     feeRows() {
       return FEE_TARGETS
         .filter(t => typeof this.fees[t] === 'number')
@@ -329,6 +378,38 @@ export default {
       this.tipCheck = await verifyTip();
     },
 
+    enableChainWork() {
+      writeFlag();
+      this.chainWorkEnabled = true;
+      this.checkChainWork();
+    },
+
+    // Re-run for each new tip; cached headers make that cheap.
+    async checkChainWork() {
+      if (!this.chainWorkEnabled || !this.latest.id || this.chainWorkFor === this.latest.id) {
+        return;
+      }
+
+      const tip = { id: this.latest.id, height: this.latest.height };
+
+      this.chainWorkFor = tip.id;
+      this.chainWorkCheck = null;
+      this.chainWorkProgress = { done: 0, total: chainWorkHeaderCount(tip.height) };
+
+      const r = await verifyChainWork(tip, {
+        onProgress: (done, total) => {
+          if (this.chainWorkFor === tip.id) {
+            this.chainWorkProgress = { done, total };
+          }
+        }
+      });
+
+      // A newer tip may have started its own run meanwhile.
+      if (this.chainWorkFor === tip.id) {
+        this.chainWorkCheck = r;
+      }
+    },
+
     loadMempool() {
       return getMempool();
     },
@@ -396,6 +477,7 @@ export default {
         onUpdate: data => {
           this.latest = data;
           this.checkTip();
+          this.checkChainWork();
         }
       }),
 

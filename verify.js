@@ -47,6 +47,15 @@ import { ApiError } from './api.js';
 
 import { headersNeeded, checkDifficulty } from './difficulty.js';
 
+import {
+  periodStarts,
+  chainWork,
+  chainWorkHex,
+  log2,
+  yearsToRedo,
+  formatRedoTime
+} from './chainwork.js';
+
 import { get, put } from './db.js';
 
 // =====================================================
@@ -468,6 +477,99 @@ export async function verifyTransactionInputs(tx, { outputTotal = null, force = 
     );
   } catch (err) {
     return errorResult("Couldn't check the input amounts", err);
+  }
+}
+
+// =====================================================
+// CHAINWORK (total work behind the tip)
+// =====================================================
+
+// Number of period headers a full chainwork computation needs.
+export function chainWorkHeaderCount(tipHeight) {
+  return periodStarts(tipHeight).length;
+}
+
+// Adds up the work behind `tip` ({ id, height }) from one proof-of-work-
+// checked header per difficulty period. Headers come from the local
+// header store when deep enough, so after a first run only new periods
+// cost a request. onProgress(done, total) reports header loading.
+export async function verifyChainWork(tip, { onProgress = () => {} } = {}) {
+  try {
+    const { pow: tipPow } = await loadVerifiedHeader(tip.id, tip.height);
+
+    if (!tipPow.ok) {
+      return result('fail', 'Tip header failed its proof-of-work check', powChecks(tipPow));
+    }
+
+    const starts = periodStarts(tip.height);
+    let done = 0;
+
+    const load = async (h, useCache) =>
+      h === tip.height
+        ? { hash: tip.id, pow: tipPow }
+        : loadHeaderAtHeight(h, tip.height, useCache);
+
+    const loaded = await mapLimit(starts, INPUT_FETCH_CONCURRENCY, async h => {
+      const r = await load(h, true);
+      onProgress(++done, starts.length);
+      return r;
+    });
+
+    // Never report a failure from a cached header without a fresh look.
+    for (let i = 0; i < loaded.length; i++) {
+      if (!loaded[i].pow.ok) {
+        loaded[i] = await load(starts[i], false);
+      }
+    }
+
+    const bits = {};
+    starts.forEach((h, i) => { bits[h] = loaded[i].pow.header.bits; });
+
+    const n = starts.length.toLocaleString('en-US');
+
+    const checks = [
+      {
+        label: starts.length === 1
+          ? 'The header of the only difficulty period so far passes proof-of-work checks'
+          : `${n} headers, one per difficulty period, pass proof-of-work checks`,
+        ok: loaded.every(l => l.pow.ok)
+      },
+      {
+        label: "The tip's difficulty matches its period's first block",
+        ok: tipPow.header.bits === bits[starts[starts.length - 1]]
+      }
+    ];
+
+    const ok = checks.every(c => c.ok);
+
+    if (!ok) {
+      return result('fail', 'Total work check FAILED', checks);
+    }
+
+    const work = chainWork(bits, tip.height);
+    const bitsOfWork = log2(work).toFixed(2);
+    const years = yearsToRedo(work, tipPow.header.bits);
+
+    return result(
+      'ok',
+      `Total work behind block ${tip.height.toLocaleString('en-US')}: 2^${bitsOfWork} hashes`,
+      checks,
+      {
+        work,
+        facts: [
+          { label: 'Total work', value: `${formatBigPower(work)} hashes (2^${bitsOfWork})` },
+          { label: 'To redo it', value: `${formatRedoTime(years)} of all miners' work at today's difficulty` },
+          { label: 'chainwork', value: chainWorkHex(work) }
+        ],
+        note:
+          'The same number Bitcoin Core reports as "chainwork": compare it with ' +
+          'the output of "bitcoin-cli getblockchaininfo" on your own node. It assumes each ' +
+          "period's blocks carry its first header's difficulty, as mainnet's " +
+          'rules require; it does not link every header to the next.'
+      }
+    );
+  } catch (err) {
+    return errorResult("Couldn't add up the total work", err);
   }
 }
 
