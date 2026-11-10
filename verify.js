@@ -65,6 +65,8 @@ import {
 
 import { get, put } from './db.js';
 
+import { historySeries } from './history.js';
+
 // =====================================================
 // HELPERS
 // =====================================================
@@ -711,6 +713,9 @@ export async function verifyDifficultyHistory(height, {
       checks,
       {
         facts,
+        // For the Charts page: one point per period, from exactly the
+        // headers just checked. Never built from a failed check.
+        series: r.ok ? historySeries(loaded.starts, loaded.ends, lastStart) : null,
         note: r.ok
           ? "This period's difficulty follows from the genesis block through every " +
             'retarget, using only proof-of-work-checked headers. Blocks inside a ' +

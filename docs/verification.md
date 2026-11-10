@@ -79,6 +79,12 @@ On block pages it runs automatically once the headers are saved in your
 browser. Otherwise a button offers it and shows how many headers it
 needs. On the home page it runs together with the total-work check.
 
+The **Charts** page draws difficulty, average block time and estimated
+hashrate from exactly the headers this check has just verified, and only
+when it passes. The hashrate is derived (difficulty × 2³² hashes per
+block, divided by the average block time), not measured, and block times
+are set by miners, so single periods are approximate.
+
 **Doesn't prove** that blocks inside a period are linked one by one. That
 would need every header ever mined: about 80 bytes for each block in the
 chain.

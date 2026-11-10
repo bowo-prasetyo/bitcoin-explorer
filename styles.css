@@ -823,3 +823,17 @@ footer {
   color: var(--muted);
   font-size: 0.85em;
 }
+
+/* ---------- history charts ---------- */
+
+.history-chart {
+  margin-top: 24px;
+}
+
+.history-chart h3 {
+  margin: 0 0 4px;
+}
+
+.history-chart p {
+  margin: 0 0 8px;
+}

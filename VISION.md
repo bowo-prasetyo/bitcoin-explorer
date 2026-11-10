@@ -125,6 +125,16 @@ Since phase 3, work ships as individual features:
   tables, readable charts with a table view, a title per tab, local time
   next to UTC, and a two-column home page.
 
+### Historical charts ✅
+
+- Difficulty, average block time and estimated hashrate since 2009, one
+  point per difficulty period, drawn only from the headers the
+  difficulty-history check has just verified (no chart from a failed
+  check). No extra download for anyone who has run the total-work check.
+- Deliberately not included: past mempool sizes and fees. Assay can't
+  check them, and they aren't part of the Esplora API, so they wouldn't
+  work with your own node.
+
 ### Next ideas
 
 - Link every header inside each period. That needs all ~925,000 headers
@@ -134,7 +144,6 @@ Since phase 3, work ships as individual features:
 ### Later
 
 - Installable PWA with offline support.
-- Historical charts.
 
 ### Out of scope for now
 

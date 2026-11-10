@@ -33,15 +33,7 @@ import {
   chainWorkHeaderCount
 } from '../verify.js';
 
-const CHAINWORK_KEY = 'btc_explorer_chainwork';
-
-function readFlag() {
-  try { return localStorage.getItem(CHAINWORK_KEY) === '1'; } catch { return false; }
-}
-
-function writeFlag() {
-  try { localStorage.setItem(CHAINWORK_KEY, '1'); } catch { /* ignore */ }
-}
+import { headersOptedIn, optInToHeaders } from '../history.js';
 
 // Confirmation targets worth showing, out of the ~28 Esplora returns.
 const FEE_TARGETS = [1, 3, 6, 12, 24, 144, 504, 1008];
@@ -308,7 +300,7 @@ export default {
       tipCheck: null,
       tipCheckedFor: null,
 
-      chainWorkEnabled: readFlag(),
+      chainWorkEnabled: headersOptedIn(),
       chainWorkCheck: null,
       historyCheck: null,
       chainWorkProgress: null,
@@ -384,7 +376,7 @@ export default {
     },
 
     enableChainWork() {
-      writeFlag();
+      optInToHeaders();
       this.chainWorkEnabled = true;
       this.checkChainWork();
     },
