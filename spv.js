@@ -319,7 +319,22 @@ export const COINBASE_PREV_VOUT = 0xffffffff;
 //             matches these bytes.
 export function parseTransaction(rawHex) {
   const bytes = hexToBytes(rawHex);
-  let offset = 0;
+  const tx = readTransaction(bytes, 0);
+
+  if (tx.end !== bytes.length) {
+    throw new Error('Trailing bytes after transaction');
+  }
+
+  return tx;
+}
+
+// Reads one transaction from `bytes` at `start` (a raw transaction, or
+// one inside a raw block). Returns parseTransaction's fields plus:
+//   end      offset just after the transaction
+//   fullHex  its bytes as served, witness included (hashes to the wtxid)
+//   witness  each input's witness stack, as hex items ([] without one)
+function readTransaction(bytes, start) {
+  let offset = start;
 
   const need = n => {
     if (offset + n > bytes.length) {
@@ -344,7 +359,6 @@ export function parseTransaction(rawHex) {
     return readUInt32LE(b, 0) + readUInt32LE(b, 4) * 2 ** 32;
   };
 
-  const start = 0;
   take(4); // version
   const afterVersion = offset;
 
@@ -377,20 +391,17 @@ export function parseTransaction(rawHex) {
 
   const bodyEnd = offset;
 
+  const witness = vin.map(() => []);
   if (segwit) {
     for (let i = 0; i < vinCount; i++) {
       const items = varint();
       for (let j = 0; j < items; j++) {
-        take(varint());
+        witness[i].push(bytesToHex(take(varint())));
       }
     }
   }
 
   const locktime = take(4);
-
-  if (offset !== bytes.length) {
-    throw new Error('Trailing bytes after transaction');
-  }
 
   // txid commits to the legacy serialization: no marker, flag or witness.
   const legacyHex =
@@ -403,10 +414,14 @@ export function parseTransaction(rawHex) {
     vin[0].txid === COINBASE_PREV_TXID &&
     vin[0].vout === COINBASE_PREV_VOUT;
 
-  const size = bytes.length;
+  const size = offset - start;
   const weight = (legacyHex.length / 2) * 3 + size;
 
-  return { segwit, vin, vout, legacyHex, coinbase, size, weight };
+  return {
+    segwit, vin, vout, legacyHex, coinbase, size, weight, witness,
+    end: offset,
+    fullHex: bytesToHex(bytes.subarray(start, offset))
+  };
 }
 
 export async function txidFromRaw(rawHex) {
@@ -481,5 +496,107 @@ export function checkCoinbaseHeight(rawHex, height) {
     applies: true,
     coinbase: tx.coinbase,
     claimed: scriptSig === null ? null : heightInScriptSig(scriptSig)
+  };
+}
+
+// =====================================================
+// BIP141: THE WITNESS COMMITMENT
+// =====================================================
+
+// A transaction's witness (signatures) isn't covered by its txid, so a
+// provider could swap it, changing the size, weight and fee rate shown.
+// Since SegWit, each block's coinbase commits to every transaction's full
+// bytes: the witness Merkle root over wtxids (the coinbase's counted as
+// zero), hashed with a 32-byte reserved value from the coinbase's witness,
+// in the last coinbase output whose script starts 6a24aa21a9ed.
+
+const WITNESS_COMMITMENT_PREFIX = '6a24aa21a9ed';
+
+// Parses a raw block (hex) and checks Bitcoin Core's witness rules
+// (validation.cpp, CheckWitnessMalleation). Resolves to {
+//   header,                       parsed 80-byte header
+//   merkleRoot, mutated,          txids rebuilt from the block's bytes
+//   txs: [{ txid, wtxid, size, weight, segwit }],
+//   hasWitness,                   any transaction carries witness data
+//   commitment: 'match' | 'mismatch' | 'malformed' | 'none',
+//   ok                            witness data is committed (or absent)
+// }
+export async function checkWitnessCommitment(blockHex) {
+  const bytes = hexToBytes(blockHex);
+  if (bytes.length < 81) {
+    throw new Error('Truncated block');
+  }
+
+  const header = parseHeader(blockHex.slice(0, 160));
+
+  let offset = 80;
+  const first = bytes[offset++];
+  let count;
+  if (first < 0xfd) count = first;
+  else if (first === 0xfd) { count = bytes[offset] | (bytes[offset + 1] << 8); offset += 2; }
+  else if (first === 0xfe) { count = readUInt32LE(bytes, offset); offset += 4; }
+  else throw new Error('Too many transactions');
+
+  if (count < 1) {
+    throw new Error('A block has at least one transaction');
+  }
+
+  const parsed = [];
+  for (let i = 0; i < count; i++) {
+    const tx = readTransaction(bytes, offset);
+    parsed.push(tx);
+    offset = tx.end;
+  }
+
+  if (offset !== bytes.length) {
+    throw new Error('Trailing bytes after the last transaction');
+  }
+
+  const txs = [];
+  for (const [i, tx] of parsed.entries()) {
+    txs.push({
+      txid: reverseHex(await doubleSHA256(tx.legacyHex)),
+      // The coinbase's wtxid is defined as zero.
+      wtxid: i === 0 ? '00'.repeat(32) : reverseHex(await doubleSHA256(tx.fullHex)),
+      size: tx.size,
+      weight: tx.weight,
+      segwit: tx.witness.some(stack => stack.length > 0)
+    });
+  }
+
+  const { root: merkleRoot, mutated } = await computeMerkleRootChecked(txs.map(t => t.txid));
+  const hasWitness = txs.some(t => t.segwit);
+
+  const coinbase = parsed[0];
+  let index = -1;
+  coinbase.vout.forEach((o, i) => {
+    if (o.scriptpubkey.length >= 76 && o.scriptpubkey.startsWith(WITNESS_COMMITMENT_PREFIX)) {
+      index = i;
+    }
+  });
+
+  let commitment;
+  if (index === -1) {
+    commitment = 'none';
+  } else {
+    const reserved = coinbase.witness[0];
+    if (reserved.length !== 1 || reserved[0].length !== 64) {
+      commitment = 'malformed';
+    } else {
+      const witnessRoot = reverseHex((await computeMerkleRootChecked(txs.map(t => t.wtxid))).root);
+      const expected = await doubleSHA256(witnessRoot + reserved[0]);
+      const committed = coinbase.vout[index].scriptpubkey.slice(12, 76);
+      commitment = expected === committed ? 'match' : 'mismatch';
+    }
+  }
+
+  return {
+    header,
+    merkleRoot,
+    mutated,
+    txs,
+    hasWitness,
+    commitment,
+    ok: commitment === 'match' || (commitment === 'none' && !hasWitness)
   };
 }

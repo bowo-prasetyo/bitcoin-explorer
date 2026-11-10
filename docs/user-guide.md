@@ -185,7 +185,8 @@ address's coins are still unspent. The full list is in
 5. Check the **Confirmations** badge under it. A green ✓ ("6 confirmations
    verified") means your browser linked every block on top, header by
    header, up to the newest block the providers agree on, so the count
-   isn't just the provider's word. For older transactions it checks the
+   isn't just the provider's word. It is checked again with every new
+   block while the page is open. For older transactions it checks the
    first 144 and says "at least 144".
 
 ### 4.2 Check a transaction's amounts and fee
@@ -201,6 +202,11 @@ On a transaction page:
 - For transactions that spend from more than **25** earlier transactions,
   this check doesn't start by itself. Click **Check all inputs (N
   downloads)** to run it.
+- The **witness data** badge downloads the transaction's block and checks
+  that the block commits to its signatures (BIP141), so the size, weight
+  and fee rate shown are proved, not just reported. For blocks over
+  500 kB it waits: click **Check witness data** (the button shows the
+  download size).
 
 ### 4.3 Check a block
 

@@ -21,7 +21,8 @@ For how to read the badges on screen, see the
 | [Transaction contents](#transaction-contents) | Transaction pages | Always |
 | [Input amounts and fee](#input-amounts-and-fee) | Transaction pages | Automatically up to 25 spent transactions; above that, on request |
 | [Transaction inclusion](#transaction-inclusion) | Transaction pages | Confirmed transactions |
-| [Confirmations](#confirmations) | Transaction pages | Once inclusion is verified; up to 144 blocks deep, "at least 144" beyond |
+| [Confirmations](#confirmations) | Transaction pages | Once inclusion is verified, and again with every new block; up to 144 blocks deep, "at least 144" beyond |
+| [Witness data](#witness-data) | Transaction pages | Once inclusion is verified; blocks over 500 kB on request |
 | [Chain tip agreement](#chain-tip-agreement) | Home page; Providers page | Always |
 | [Total work behind the tip](#total-work-behind-the-tip) | Home page | On request the first time, then automatically |
 | [Not verified](#not-verified) | Addresses, mempool, fees | Never: shown as reported |
@@ -150,8 +151,9 @@ hidden, added to or reordered without failing this check.
 - The weight, used for the fee rate, matches the raw transaction.
 
 **Doesn't prove** the input amounts: those are covered by the next check.
-The witness (signatures) isn't covered by the txid, so the weight check
-only shows that the weight matches the bytes the provider sent.
+The witness (signatures) isn't covered by the txid, so this weight check
+only shows that the weight matches the bytes the provider sent; the
+[witness data](#witness-data) check proves it from the block.
 
 ## Input amounts and fee
 
@@ -230,9 +232,36 @@ headers that don't fit together. If the providers disagree about the
 newest block, the check is grey until they agree.
 
 **Doesn't prove** that the chain is the one with the most work in the
-whole network: it is the one your providers agree on. The count is
-checked when the page opens; the number shown above it keeps going up
-with each new block.
+whole network: it is the one your providers agree on.
+
+The count is checked again with every new block while the page is open:
+the badge keeps showing the last verified count until the new one is in.
+A count already at "at least 144" isn't checked again.
+
+## Witness data
+
+**Checks** that the transaction's full bytes, signatures included, are
+the ones its block commits to, so the size and weight shown, and the fee
+rate built on them, are verified. A transaction's *witness* isn't covered
+by its txid, so without this a provider could serve a lighter witness and
+make the fee rate look higher.
+
+- The whole block is downloaded raw. Its header hashes to the block id
+  and matches the header the inclusion check verified.
+- Its transactions rebuild the header's *Merkle root*, so these are the
+  block's real transactions.
+- Its coinbase commits to every transaction's full bytes (*BIP141*): the
+  last coinbase output starting `6a24aa21a9ed` holds the hash of the
+  witness Merkle root and the coinbase's reserved value. A block whose
+  transactions have no witness data needs no commitment.
+- The transaction is in the block, with the weight and size shown.
+
+It runs once inclusion is verified. Blocks up to 500 kB are downloaded
+by themselves. Larger blocks (most recent ones are 1–2 MB) wait for a
+click on **Check witness data**, which shows the download size.
+
+**Doesn't prove** that the signatures are valid: that takes script
+validation, which only full nodes do.
 
 ## Chain tip agreement
 

@@ -30,6 +30,8 @@ import {
   getBlockHashFrom,
   getBlockHashFromEach,
   getBlocksFrom,
+  getBlock,
+  getBlockRaw,
   recordTipCheck
 } from './api.js';
 
@@ -41,6 +43,8 @@ import {
   txidFromRaw,
   checkCoinbaseHeight,
   headerFromBlockJson,
+  checkWitnessCommitment,
+  blockHashFromHeader,
   BIP34_HEIGHT
 } from './spv.js';
 
@@ -1069,6 +1073,8 @@ export async function verifyTransactionInclusion(tx) {
 
     return result('ok', `Inclusion in block ${h} verified`, checks, {
       facts,
+      // The checked header, for the checks that build on inclusion.
+      header: pow.header,
       note: atHeight.single
         ? 'With only one provider, its word is all there is for which block is at this height.'
         : undefined
@@ -1076,6 +1082,106 @@ export async function verifyTransactionInclusion(tx) {
   } catch (err) {
     return errorResult("Couldn't check inclusion", err);
   }
+}
+
+// =====================================================
+// WITNESS DATA (BIP141 commitment: size, weight, fee rate)
+// =====================================================
+
+// Blocks up to this size are downloaded without asking.
+export const WITNESS_AUTO_LIMIT_BYTES = 500_000;
+
+// That the transaction's full bytes, witness included, are the ones its
+// block commits to, so the size and weight shown (and the fee rate built
+// on them) are verified. Downloads the whole block: its transactions must
+// rebuild the checked header's Merkle root, and its coinbase must commit
+// to every witness (BIP141). `header` is the block's checked header (from
+// the inclusion check). Above WITNESS_AUTO_LIMIT_BYTES it waits for
+// `force`.
+export async function verifyWitness(tx, { header = null, force = false } = {}) {
+  if (!tx.status?.confirmed) {
+    return result('na', "Not in a block yet: its witness data isn't committed to anything yet.");
+  }
+
+  if (!header) {
+    return result('na', 'Witness data is checked once inclusion is verified.');
+  }
+
+  try {
+    const blockHash = tx.status.block_hash;
+
+    if (!force) {
+      const { size } = await getBlock(blockHash);
+      if (size > WITNESS_AUTO_LIMIT_BYTES) {
+        return result('na', `Needs the whole block (${formatMB(size)}); not downloaded automatically`, [], {
+          needsConfirm: true,
+          blockBytes: size
+        });
+      }
+    }
+
+    const blockHex = await getBlockRaw(blockHash);
+    const w = await checkWitnessCommitment(blockHex);
+    const entry = w.txs.find(t => t.txid === tx.txid);
+
+    const checks = [
+      {
+        label: "The downloaded block is this block: its header hashes to the block id",
+        ok: (await blockHashFromHeader(blockHex.slice(0, 160))) === blockHash &&
+          w.header.merkleRoot === header.merkleRoot
+      },
+      {
+        label: `Its ${w.txs.length.toLocaleString('en-US')} transactions rebuild the header's Merkle root`,
+        ok: w.merkleRoot === header.merkleRoot && !w.mutated
+      },
+      {
+        label: w.commitment === 'none'
+          ? 'No transaction in the block has witness data, so there is nothing to commit to'
+          : "The coinbase commits to every transaction's witness data (BIP141)",
+        ok: w.ok
+      },
+      { label: 'This transaction is in the block', ok: !!entry }
+    ];
+
+    if (entry && tx.weight !== undefined) {
+      checks.push({ label: `Weight is ${entry.weight.toLocaleString('en-US')} WU, as shown`, ok: entry.weight === tx.weight });
+    }
+    if (entry && tx.size !== undefined) {
+      checks.push({ label: `Size is ${entry.size.toLocaleString('en-US')} bytes, as shown`, ok: entry.size === tx.size });
+    }
+
+    const ok = allOk(checks);
+
+    return result(
+      ok ? 'ok' : 'fail',
+      ok
+        ? (entry.segwit ? 'Witness data and weight verified' : 'Weight verified (no witness data)')
+        : 'Witness check FAILED',
+      checks,
+      {
+        facts: entry
+          ? [
+              { label: 'Weight', value: `${entry.weight.toLocaleString('en-US')} WU` },
+              { label: 'Virtual size', value: `${Math.ceil(entry.weight / 4).toLocaleString('en-US')} vB` },
+              { label: 'Block downloaded', value: formatMB(blockHex.length / 2) }
+            ]
+          : [],
+        verifiedWeight: ok ? entry.weight : null,
+        note: ok
+          ? 'The size and weight, and so the fee rate, come from bytes the ' +
+            "block's proof of work covers, signatures included."
+          : undefined
+      }
+    );
+  } catch (err) {
+    return errorResult("Couldn't check the witness data", err);
+  }
+}
+
+function formatMB(bytes) {
+  return bytes >= 1e6
+    ? `${(bytes / 1e6).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1e3)).toLocaleString('en-US')} kB`;
 }
 
 // =====================================================
