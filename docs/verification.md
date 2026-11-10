@@ -150,6 +150,12 @@ that provider, even if every other provider agrees. It is never counted
 as a provider that couldn't be reached: those make the check grey, as
 they prove nothing either way.
 
+A provider that fails is then **left out of lookups**: Assay can't check
+balances, the mempool or fees, so it stops asking a provider that has
+sent a fake block. It is used again when its tip passes this check, after
+24 hours, or when you click **Use it again** on the Providers page. It is
+still asked for its tip meanwhile, so the check can clear it.
+
 **Doesn't prove** anything with a single provider: there is nothing to
 compare.
 
