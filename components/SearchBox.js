@@ -103,6 +103,11 @@ export default {
       } catch (err) {
         if (err instanceof ApiError && err.kind === 'not_found') {
           this.error = `There is no block at height ${formatNumber(result.height)} yet.`;
+        } else if (err instanceof ApiError && err.kind === 'offline') {
+          this.error =
+            "You're offline, so Assay can't look up block heights or hashes. " +
+            'Transactions and addresses you opened before still open from ' +
+            'their id or address.';
         } else if (err instanceof ApiError && err.kind === 'distrusted') {
           this.error =
             'Every data provider sent an invalid chain tip, so Assay has ' +

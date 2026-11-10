@@ -87,6 +87,9 @@ Every check, with exactly what it proves and doesn't, is in
   updates on/off, and a form to **use your own node**.
 - **Works offline-first:** the last copy of each page shows instantly,
   with its age, even when providers can't be reached.
+- **Installable app that opens offline:** install it from Chrome, Edge
+  or Safari; after one visit it starts with no connection and shows the
+  pages you viewed, clearly marked as saved.
 - **Live updates:** new blocks are announced over one WebSocket instead
   of constant polling.
 
@@ -117,6 +120,11 @@ python3 -m http.server 8000
 
 Then open <http://localhost:8000>. Dependencies load from CDNs at pinned
 versions with Subresource Integrity (see `index.html`).
+
+The service worker (`sw.js`) runs on `localhost` too. It fetches the
+app's files from the network first, so edits show up on a normal
+reload. Add any new module or component to `APP_FILES` in `sw.js`; a
+test fails until you do.
 
 ### Tests
 
@@ -171,6 +179,16 @@ of every browser module, on every push and pull request.
   reconnects with exponential back-off and jitter (2 s up to 5 min), and
   falls back to polling. Blockstream and electrs have no WebSocket.
   With your endpoint set to exclusive, the socket goes only to it.
+- **Offline:** a service worker (`sw.js`) saves the app's own files and
+  the three pinned libraries (about 650 KB) when it installs. The app's
+  files are fetched from the network first and the saved copy is used
+  only when there's no answer within 4 s, so online visits always run
+  the deployed version. The libraries are served from the cache, as
+  their URLs never change. Bitcoin data requests pass straight through:
+  the IndexedDB cache above already covers them offline. While the
+  device reports being offline, no request is sent at all, so providers'
+  health scores aren't marked down, and every panel refreshes as soon as
+  the connection returns.
 
 ### Project layout
 
@@ -188,6 +206,9 @@ of every browser module, on every push and pull request.
 | `titles.js` | Browser tab title for each page |
 | `glossary.js` | The in-app glossary; must match `docs/glossary.md` (a test checks) |
 | `live.js` | Live "new block" notifications over WebSocket |
+| `sw.js` | Service worker: saves the app for offline use (not Bitcoin data) |
+| `connection.js` | Online/offline state, service worker registration, the install button |
+| `manifest.webmanifest`, `icon-*.png` | Makes the app installable: name, colours, icons |
 | `consensus.js` | Compares chain tips across providers |
 | `distrust.js` | Leaves providers that sent an invalid tip out of lookups, and when to let them back in |
 | `history.js` | Chart series (difficulty, block time, hashrate) from checked headers |

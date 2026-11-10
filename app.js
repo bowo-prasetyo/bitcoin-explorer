@@ -11,6 +11,7 @@ import VerifySummary from './components/VerifySummary.js';
 import GlossaryTerm from './components/GlossaryTerm.js';
 import { liveFeed, liveCandidates } from './live.js';
 import { getProviderSettings } from './api.js';
+import { connection, installApp, registerServiceWorker, runningInstalled } from './connection.js';
 
 // One shared, reactive copy of the live-update status for the header.
 export const liveState = Vue.reactive({ status: 'off' });
@@ -30,13 +31,25 @@ const VERIFICATION_URL = REPO_URL + '/blob/main/docs/verification.md';
 
 const App = {
   data() {
-    return { live: liveState, HELP_URL, VERIFICATION_URL, REPO_URL };
+    return {
+      live: liveState,
+      connection,
+      standalone: runningInstalled(),
+      HELP_URL,
+      VERIFICATION_URL,
+      REPO_URL
+    };
   },
   computed: {
     // The home page has its own, larger search box.
     showHeaderSearch() { return this.$route.path !== '/'; },
+    // The browser can install Assay, and it isn't already running installed.
+    canInstall() { return !!this.connection.installPrompt && !this.standalone; },
     liveLabel() { return LIVE_LABELS[this.live.status][0]; },
     liveTitle() { return LIVE_LABELS[this.live.status][1]; }
+  },
+  methods: {
+    installApp
   },
   template: `
   <div>
@@ -57,6 +70,11 @@ const App = {
       >{{ liveLabel }}</router-link>
     </header>
 
+    <div v-if="!connection.online" class="offline-banner" role="status">
+      You're offline. Assay shows the pages you opened before, as they were
+      then; their age is shown on each.
+    </div>
+
     <!-- Keyed on the full URL so moving between two blocks (or two pages
          of one block) remounts the view and loads the new data. -->
     <router-view :key="$route.fullPath"></router-view>
@@ -66,6 +84,7 @@ const App = {
       <a :href="HELP_URL" target="_blank" rel="noopener">User guide</a>
       <a :href="VERIFICATION_URL" target="_blank" rel="noopener">What gets verified</a>
       <a :href="REPO_URL" target="_blank" rel="noopener">Source</a>
+      <button v-if="canInstall" type="button" class="link-button" @click="installApp">Install app</button>
     </footer>
 
   </div>
@@ -118,6 +137,8 @@ async function bootstrap() {
     app.component('glossary-term', GlossaryTerm);
     app.use(router);
     app.mount('#app');
+
+    registerServiceWorker();
 
   } catch (err) {
     console.error('Bootstrap failed', err);

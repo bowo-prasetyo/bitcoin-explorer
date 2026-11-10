@@ -283,10 +283,20 @@ export function createSmartRefresher({
     }
   }
 
+  // Back online: refresh now rather than at the next poll.
+  function onOnline() {
+    if (!destroyed) {
+      clearTimeout(timer);
+      refresh();
+    }
+  }
+
   function start() {
     if (poll) {
       document.addEventListener('visibilitychange', onVisibilityChange);
     }
+
+    window.addEventListener('online', onOnline);
 
     refresh();
 
@@ -313,6 +323,7 @@ export function createSmartRefresher({
     unsubscribeBlock?.();
     unsubscribeStatus?.();
     document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('online', onOnline);
   }
 
   return { start, stop, refresh, status };

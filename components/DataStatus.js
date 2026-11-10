@@ -4,6 +4,7 @@
 // refresh.js.
 
 import { formatAgo } from '../format.js';
+import { connection } from '../connection.js';
 
 const { ref, computed } = Vue;
 
@@ -30,6 +31,12 @@ export default {
       () => props.status.error?.kind === 'not_found'
     );
 
+    // No connection: nothing was even asked.
+    const offline = computed(
+      () => props.status.error?.kind === 'offline' ||
+        (!!props.status.error && !connection.online)
+    );
+
     // Every provider is left out of lookups for sending an invalid tip.
     const distrusted = computed(
       () => props.status.error?.kind === 'distrusted'
@@ -41,7 +48,7 @@ export default {
         : ''
     );
 
-    return { ago, notFound, distrusted, absoluteTime };
+    return { ago, notFound, offline, distrusted, absoluteTime };
   },
 
   // Only the notices sit in the live region: they change when something
@@ -55,6 +62,16 @@ export default {
       <div v-if="status.error && notFound" class="notice notice-error">
         This {{ what }} was not found.
         <span class="muted">{{ status.error.message }}</span>
+      </div>
+
+      <div v-else-if="offline && !status.updatedAt" class="notice notice-warn">
+        You're offline, and this wasn't saved on an earlier visit. It loads
+        by itself when you're back online.
+      </div>
+
+      <div v-else-if="offline" class="notice notice-warn">
+        You're offline. Showing what was saved
+        <span :title="absoluteTime" aria-hidden="true">{{ ago }}</span><span class="visually-hidden">at {{ absoluteTime }}</span>.
       </div>
 
       <div v-else-if="distrusted" class="notice notice-error">

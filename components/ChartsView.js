@@ -65,7 +65,7 @@ export default {
         Nothing here is taken on a provider's word.
       </p>
 
-      <div v-if="tipError" class="notice notice-error">{{ tipError }}</div>
+      <div v-if="tipError" class="notice" :class="tipOffline ? 'notice-warn' : 'notice-error'">{{ tipError }}</div>
 
       <div v-else-if="tipHeight === null" class="muted">Loading…</div>
 
@@ -193,6 +193,7 @@ export default {
 
       tipHeight: null,
       tipError: '',
+      tipOffline: false,
       offer: 0,
       progress: null,
       historyCheck: null,
@@ -239,9 +240,11 @@ export default {
       try {
         this.tipHeight = await getTipHeight();
       } catch (err) {
-        this.tipError = err?.kind === 'distrusted'
-          ? 'Every data provider sent an invalid chain tip, so Assay has stopped asking them. See the Providers page.'
-          : "Couldn't reach any Bitcoin data provider to find the newest block. Reload to try again.";
+        this.tipOffline = err?.kind === 'offline';
+        this.tipError = {
+          distrusted: 'Every data provider sent an invalid chain tip, so Assay has stopped asking them. See the Providers page.',
+          offline: "You're offline. The history charts need the newest block first; open this page again when you're back online."
+        }[err?.kind] || "Couldn't reach any Bitcoin data provider to find the newest block. Reload to try again.";
         return;
       }
 
