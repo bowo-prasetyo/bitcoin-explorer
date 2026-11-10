@@ -458,6 +458,16 @@ export async function getMempool() {
   return await r.json();
 }
 
+// Blocks at `height` and just below it, newest first (Esplora returns 10;
+// some servers more). With `base`, asks that provider only.
+export async function getBlocksFrom(height, base = null) {
+  if (base) {
+    return JSON.parse(await fetchTextFrom(base, `/blocks/${height}`));
+  }
+  const r = await apiFetch(`/blocks/${height}`);
+  return await r.json();
+}
+
 export async function getRecentBlocks() {
   const r = await apiFetch('/blocks');
   return await r.json();

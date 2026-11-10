@@ -182,6 +182,11 @@ address's coins are still unspent. The full list is in
    work, and that every data provider has that block at that height. If
    only one provider could confirm the block so far, the badge is grey:
    wait a minute and reload.
+5. Check the **Confirmations** badge under it. A green ✓ ("6 confirmations
+   verified") means your browser linked every block on top, header by
+   header, up to the newest block the providers agree on, so the count
+   isn't just the provider's word. For older transactions it checks the
+   first 144 and says "at least 144".
 
 ### 4.2 Check a transaction's amounts and fee
 

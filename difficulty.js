@@ -220,3 +220,45 @@ export function checkDifficultyHistory(starts, ends, lastStart) {
 
   return { ok: failures.length === 0, retargets: stats.retargets, failures, stats };
 }
+
+// =====================================================
+// A RUN OF CONSECUTIVE HEADERS (confirmations)
+// =====================================================
+
+// Do the headers at heights from..to form a chain Bitcoin allows?
+// headers: { [height]: { hash, bits, timestamp, previousBlockHash, powOk } }
+//          for every height from..to
+// periodFirst: { [height]: { timestamp, powOk } } the first header of the
+//          period before each period start in from+1..to (only needed
+//          when the run crosses a retarget and doesn't contain it).
+// Each header after `from` must point to the one before and have the
+// difficulty required after it: the same inside a period, the retarget
+// at a period start.
+// Returns { linked, powOk, difficultyOk, ok }.
+export function checkHeaderChain(headers, from, to, periodFirst = {}) {
+  let linked = true;
+  let powOk = !!headers[from]?.powOk;
+  let difficultyOk = true;
+
+  for (let h = from + 1; h <= to; h++) {
+    const cur = headers[h];
+    const prev = headers[h - 1];
+
+    if (!cur || !prev) {
+      throw new Error(`Missing header at height ${h}`);
+    }
+
+    linked &&= cur.previousBlockHash === prev.hash;
+    powOk &&= !!cur.powOk;
+
+    if (h % RETARGET_INTERVAL !== 0) {
+      difficultyOk &&= cur.bits === prev.bits;
+    } else {
+      const first = headers[h - RETARGET_INTERVAL] ?? periodFirst[h - RETARGET_INTERVAL];
+      difficultyOk &&= !!first?.powOk &&
+        cur.bits === nextBits(prev.bits, first.timestamp, prev.timestamp).bits;
+    }
+  }
+
+  return { linked, powOk, difficultyOk, ok: linked && powOk && difficultyOk };
+}

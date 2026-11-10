@@ -474,3 +474,101 @@ test("depth: a coinbase that can't be fetched leaves inclusion grey, never green
   assert.equal(r.state, 'error');
   assert.match(r.title, /Couldn't fetch block 100,000's coinbase/);
 });
+
+// ---- Confirmations: blocks on top, header by header ----
+
+// Esplora block JSON for the real genesis block and block 1.
+const G_JSON = { id: G_HASH, height: 0, version: 1, previousblockhash: null,
+  merkle_root: G_TXID, timestamp: 1231006505, bits: 0x1d00ffff, nonce: 2083236893 };
+const B1_JSON = { id: B1_HASH, height: 1, version: 1, previousblockhash: G_HASH,
+  merkle_root: '0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098',
+  timestamp: 1231469665, bits: 0x1d00ffff, nonce: 2573394689 };
+
+function serveChainToBlock1() {
+  serveTip(HOSTS, 1, B1_HASH, B1_HEADER);
+  serve(`/block/${G_HASH}/header`, G_HEADER);
+  serve('/blocks/1', [B1_JSON, G_JSON]);
+}
+
+test('confirmations: a block with one real block on top has 2, verified', async () => {
+  serveChainToBlock1();
+  const r = await V.verifyConfirmations(G_TX);
+  assert.equal(r.state, 'ok', JSON.stringify(r.checks));
+  assert.equal(r.title, '2 confirmations verified');
+  assert.equal(r.confirmations, 2);
+  assert.ok(r.checks.some(c => c.ok && /1 block on top each point to the block before/.test(c.label)));
+  assert.ok(r.checks.some(c => c.ok && /ends at the newest block the providers agree on \(1\)/.test(c.label)));
+  assert.ok(r.facts.some(f => f.label === 'Work built on top'));
+});
+
+test('confirmations: a transaction in the newest block has 1', async () => {
+  serveTip(HOSTS, 0, G_HASH, G_HEADER);
+  const r = await V.verifyConfirmations(G_TX);
+  assert.equal(r.state, 'ok', JSON.stringify(r.checks));
+  assert.equal(r.title, '1 confirmation verified');
+});
+
+test("confirmations: a block the chain above doesn't build on FAILS (replaced block)", async () => {
+  // The providers' block 1 doesn't point to this transaction's block 0.
+  serveChainToBlock1();
+  const other = { ...G_TX, status: { ...G_TX.status, block_hash: B1_HASH } };
+  serve(`/block/${B1_HASH}/header`, B1_HEADER);
+  const r = await V.verifyConfirmations(other);
+  assert.equal(r.state, 'fail');
+  assert.ok(failed(r, 'point to the block before'));
+});
+
+test('confirmations: a header whose JSON was altered FAILS', async () => {
+  serveChainToBlock1();
+  serve('/blocks/1', [{ ...B1_JSON, timestamp: B1_JSON.timestamp + 600 }, G_JSON]);
+  const r = await V.verifyConfirmations(G_TX);
+  assert.equal(r.state, 'fail');
+  assert.ok(failed(r, 'valid proof of work'));
+});
+
+test("confirmations: providers that don't agree on the tip leave it grey", async () => {
+  serveTip(['blockstream.info'], 1, B1_HASH, B1_HEADER);
+  serveTip(['mempool.space'], 1, G_HASH, G_HEADER); // same height, other block
+  serve(`/block/${G_HASH}/header`, G_HEADER);
+  const r = await V.verifyConfirmations(G_TX);
+  assert.equal(r.state, 'error');
+  assert.match(r.title, /Providers don't agree on the newest block/);
+});
+
+test('confirmations: deeper than the limit, "at least", anchored by every provider', async () => {
+  // Tip at height 2 (the genesis header standing in for it; only its
+  // height matters here), limit 2: block 1 is checked and every provider
+  // must have it at height 1.
+  serveTip(HOSTS, 2, G_HASH, G_HEADER);
+  serve(`/block/${G_HASH}/header`, G_HEADER);
+  serve('/blocks/1', [B1_JSON, G_JSON]);
+  serve('/block-height/1', B1_HASH);
+  const r = await V.verifyConfirmations(G_TX, { limit: 2 });
+  assert.equal(r.state, 'ok', JSON.stringify(r.checks));
+  assert.equal(r.title, 'At least 2 confirmations verified');
+  assert.equal(r.atLeast, true);
+  assert.ok(r.facts.some(f => f.value === '2 of 3'));
+});
+
+test('confirmations: deeper than the limit, a provider with another block there FAILS', async () => {
+  serveTip(HOSTS, 2, G_HASH, G_HEADER);
+  serve(`/block/${G_HASH}/header`, G_HEADER);
+  serve('/blocks/1', [B1_JSON, G_JSON]);
+  serve('/block-height/1', B1_HASH, ['blockstream.info']);
+  serve('/block-height/1', 'ab'.repeat(32), ['mempool.space']);
+  const r = await V.verifyConfirmations(G_TX, { limit: 2 });
+  assert.equal(r.state, 'fail');
+});
+
+test('confirmations: a provider that leaves out a block leaves it grey', async () => {
+  serveTip(HOSTS, 1, B1_HASH, B1_HEADER);
+  serve(`/block/${G_HASH}/header`, G_HEADER);
+  serve('/blocks/1', [G_JSON]); // block 1 missing
+  const r = await V.verifyConfirmations(G_TX);
+  assert.equal(r.state, 'error');
+});
+
+test('confirmations: unconfirmed transactions have nothing to check', async () => {
+  const r = await V.verifyConfirmations({ ...G_TX, status: { confirmed: false } });
+  assert.equal(r.state, 'na');
+});

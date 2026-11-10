@@ -81,6 +81,16 @@ function core(scenario) {
   if (scenario === 'fake-amount') {
     m[`/tx/${G_TXID}`] = { ...G_TX, vout: [{ ...G_TX.vout[0], value: 2100000000000000 }] };
   }
+  if (scenario === 'tip-block1' || scenario === 'tip-block1-altered') {
+    // Both providers' newest block is block 1, built on genesis.
+    const b1 = { id: B1_HASH, height: 1, version: 1, previousblockhash: G_HASH,
+      merkle_root: '0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098',
+      timestamp: 1231469665, bits: 486604799, nonce: 2573394689 };
+    m['/blocks/tip/hash'] = B1_HASH;
+    m[`/block/${B1_HASH}/header`] = B1_HEADER;
+    m[`/block/${B1_HASH}/status`] = { in_best_chain: true, height: 1 };
+    m['/blocks/1'] = [scenario === 'tip-block1' ? b1 : { ...b1, nonce: 1 }, G_BLOCK];
+  }
   if (scenario === 'inner-node') {
     // A "transaction" that is really the pair (tx 2, tx 3) of block
     // 100,000: its short proof reaches the real root.
@@ -234,6 +244,23 @@ module.exports = async function ({ chromium, BASE, check }) {
   b = await badgeTexts(page);
   check('tx: inner Merkle node as a "transaction" -> inclusion FAILED (proof too short)',
     b.some(t => /verify-fail :: Inclusion check FAILED/.test(t)), b.join(' | '));
+  scenario = 'honest';
+
+  // ---- Confirmations, header by header up to the providers' tip
+  scenario = 'tip-block1';
+  page = await fresh();
+  await page.goto(BASE + '#/tx/' + G_TXID);
+  await waitBadges(page, 4);
+  b = await badgeTexts(page);
+  check('tx: confirmations verified up to the agreed tip', b.some(t => /verify-ok :: 2 confirmations verified/.test(t)), b.join(' | '));
+  check('tx: summary counts the confirmations check', b.some(t => /verify-summary.*All 3 checks passed/.test(t)), b.join(' | '));
+
+  scenario = 'tip-block1-altered';
+  page = await fresh();
+  await page.goto(BASE + '#/tx/' + G_TXID);
+  await waitBadges(page, 4);
+  b = await badgeTexts(page);
+  check('tx: a header above the block that was altered -> confirmations FAILED', b.some(t => /verify-fail :: Confirmations check FAILED/.test(t)), b.join(' | '));
   scenario = 'honest';
 
   // ---- Tip agreement

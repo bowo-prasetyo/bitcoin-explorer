@@ -9,6 +9,16 @@ against the live data providers.
 
 ### Added
 
+- **Verified confirmations:** transaction pages count the blocks built on
+  the transaction's block header by header, instead of taking the
+  provider's tip height. Every header up to the newest block the providers
+  agree on is rebuilt from the provider's data, must hash to its id,
+  point to the one before and have the difficulty Bitcoin requires. Up to
+  144 blocks are checked (about ten per request); deeper transactions show
+  "at least 144", with every provider holding the 144th block at that
+  height. A block that is no longer on the agreed chain (a reorganisation)
+  fails the check.
+
 - **Merkle-proof depth:** transaction inclusion checks that the proof is
   exactly as deep as the proof for the block's coinbase (downloaded raw,
   hashing to its txid, proved first in the block). Every transaction is
