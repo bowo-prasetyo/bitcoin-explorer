@@ -263,6 +263,7 @@ module.exports = async function ({ chromium, BASE, check }) {
   check('tx: confirmations verified up to the agreed tip', b.some(t => /verify-ok :: 2 confirmations verified/.test(t)), b.join(' | '));
   check('tx: summary counts the confirmations and witness checks', b.some(t => /verify-summary.*All 4 checks passed/.test(t)), b.join(' | '));
   check('tx: weight verified from the whole block (no witness data in it)', b.some(t => /verify-ok :: Weight verified \(no witness data\)/.test(t)), b.join(' | '));
+  await page.context().close();
 
   // ---- A new block arrives while the page is open: counted again
   scenario = 'tip-genesis';
@@ -273,11 +274,19 @@ module.exports = async function ({ chromium, BASE, check }) {
   b = await badgeTexts(page);
   check('tx: in the newest block -> 1 confirmation verified', b.some(t => /verify-ok :: 1 confirmation verified/.test(t)), b.join(' | '));
   scenario = 'tip-block1';
-  await page.clock.runFor(120000);
-  const recounted = await page.waitForFunction(
-    () => [...document.querySelectorAll('.verify-ok .verify-title')].some(e => /2 confirmations verified/.test(e.textContent)),
-    null, { timeout: 15000 }).then(() => true, () => false);
+  // Step the fake clock 5 s at a time (under the app's 8 s request timeout)
+  // and give the mocked requests real time to answer between steps, until
+  // the tip poll has picked up block 1 and the count is checked again.
+  let recounted = false;
+  for (let i = 0; i < 30 && !recounted; i++) {
+    await page.clock.runFor(5000);
+    recounted = await page.waitForFunction(
+      () => [...document.querySelectorAll('.verify-ok .verify-title')].some(e => /2 confirmations verified/.test(e.textContent)),
+      null, { timeout: 500 }).then(() => true, () => false);
+  }
   check('tx: a new block re-verifies the confirmations without a reload', recounted, (await badgeTexts(page)).join(' | '));
+  // Done with it: a page left open keeps polling into the shared host log.
+  await page.context().close();
 
   scenario = 'tip-block1-altered';
   page = await fresh();
@@ -285,6 +294,7 @@ module.exports = async function ({ chromium, BASE, check }) {
   await waitBadges(page, 4);
   b = await badgeTexts(page);
   check('tx: a header above the block that was altered -> confirmations FAILED', b.some(t => /verify-fail :: Confirmations check FAILED/.test(t)), b.join(' | '));
+  await page.context().close();
   scenario = 'honest';
 
   // ---- Tip agreement
