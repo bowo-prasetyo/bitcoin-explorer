@@ -17,7 +17,8 @@ what it could and couldn't prove.
 **[User guide](docs/user-guide.md)** ·
 **[What gets verified](docs/verification.md)** ·
 **[Glossary](docs/glossary.md)** ·
-**[Vision and roadmap](VISION.md)**
+**[Vision and roadmap](VISION.md)** ·
+**[Changelog](CHANGELOG.md)**
 
 ## Quick start
 
@@ -128,12 +129,26 @@ test fails until you do.
 
 ### Tests
 
+Unit tests (verification maths, parsing, formatting) need only Node 20
+or newer:
+
 ```bash
 node --test tests/*.test.mjs
 ```
 
-Requires Node 20 or newer. CI runs the same command, and a syntax check
-of every browser module, on every push and pull request.
+Browser tests drive the real app in headless Chromium against mocked
+providers that serve real mainnet data, offline. They need the dev
+tooling in `package.json` (the site itself still needs no install):
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+CI runs both, plus a syntax check of every browser module, on every push
+and pull request. See [tests/e2e/README.md](tests/e2e/README.md) for what
+the browser suites cover.
 
 ### Behaviour on the network
 
@@ -217,7 +232,7 @@ of every browser module, on every push and pull request.
 | `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |
 | `components/` | Views, plus shared pieces: `DataStatus`, `VerifyBadge`, `VerifySummary`, `ProviderNote`, `SearchBox`, `CopyButton`, `GlossaryTerm` |
 | `docs/` | User guide, verification reference, glossary |
-| `tests/` | Unit tests |
+| `tests/` | Unit tests; `tests/e2e/` holds the browser tests |
 | `brand/`, `favicon.*`, `apple-touch-icon.png` | Logo, favicons and brand guide ([brand/README.md](brand/README.md)) |
 
 ### Documentation
@@ -225,7 +240,9 @@ of every browser module, on every push and pull request.
 The README and `docs/` describe only what exists today. Plans live in
 [VISION.md](VISION.md). When a change alters what users see, update the
 [user guide](docs/user-guide.md), and when it changes a check, update
-[verification.md](docs/verification.md).
+[verification.md](docs/verification.md). Releases follow
+[docs/releasing.md](docs/releasing.md) and are listed in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

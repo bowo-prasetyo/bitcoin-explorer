@@ -19,3 +19,27 @@ jobs:
       - run: node --test tests/*.test.mjs
       - name: Syntax-check browser modules
         run: for f in *.js components/*.js; do node --check "$f"; done
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Browser tests (providers mocked, no network)
+        run: npm run test:e2e
+        env:
+          E2E_SCREENSHOTS: e2e-screenshots
+      - name: Keep screenshots when something fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: e2e-screenshots
+          if-no-files-found: ignore
