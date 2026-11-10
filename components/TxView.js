@@ -262,6 +262,7 @@ export default {
       this.inputsCheck = null;
       this.inputsCheck = await verifyTransactionInputs(this.tx, {
         outputTotal: this.contentsCheck?.outputTotal ?? null,
+        coinbase: this.contentsCheck?.coinbase ?? null,
         force
       });
     },

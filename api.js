@@ -535,6 +535,23 @@ export async function getBlockHashFrom(base, height) {
   return (await fetchTextFrom(base, `/block-height/${height}`)).toLowerCase();
 }
 
+// Hash at `height` according to every provider that lookups may use,
+// asked separately (no failover).
+// Resolves to [{ name, ok: true, hash } | { name, ok: false, error }].
+export async function getBlockHashFromEach(height) {
+  return Promise.all(
+    lookupNodes(getRankedNodes(), distrust).map(async p => {
+      try {
+        const hash = await getBlockHashFrom(p.base, height);
+        if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error('unexpected response');
+        return { name: p.name, ok: true, hash };
+      } catch (err) {
+        return { name: p.name, ok: false, error: err.message };
+      }
+    })
+  );
+}
+
 // Checks that an endpoint looks like a working Esplora API.
 export async function testEndpoint(input) {
   const base = normalizeEndpoint(input);

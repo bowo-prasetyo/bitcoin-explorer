@@ -35,7 +35,7 @@ If CI fails, its screenshots are attached to the run.
 |---|---|
 | `01-honesty` | Freshness labels, cache-first loading, offline with stale cache, outages, "not found" asking one provider only |
 | `02-explorer` | Search and its validation, navigation, block pages and paging, transaction and address details, cache pruning, no sideways scrolling on phones |
-| `03-verification` | Proof of work, transaction list, transaction contents and inclusion, provider agreement on the tip, your own endpoint (including exclusive mode) |
+| `03-verification` | Proof of work, transaction list, transaction contents and inclusion (including a provider with a different block at that height), provider agreement on the tip (one block behind, far behind, conflict), your own endpoint (including exclusive mode) |
 | `04-difficulty` | Difficulty is correct for the height |
 | `05-inputs` | Input amounts and fee, large transactions asking first |
 | `06-chainwork` | Total work behind the tip, matching Bitcoin Core's value for the genesis block |

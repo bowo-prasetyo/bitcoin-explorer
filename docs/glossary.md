@@ -51,16 +51,20 @@ Plain explanations of the terms used in Assay and its docs.
   hashes showing that one transaction is part of that summary, without
   downloading the whole block.
 - **OP_RETURN**: An output that carries a small piece of data instead of paying anyone.
-- **Proof of work**: Evidence that a lot of computing was spent to produce a block: its
-  hash is below the target. Anyone can check it instantly.
+- **Proof of work**: Evidence of computing spent to produce a block: its hash is
+  at or below the target. Anyone can check it instantly. The work proved is only
+  as much as the block's difficulty demands, so a block also needs the
+  difficulty Bitcoin requires at its height.
 - **Retarget**: The difficulty adjustment at the start of each period. If the last
   2,016 blocks came faster than two weeks, difficulty goes up. If slower,
   it goes down, by at most 4× either way.
-- **Target**: The number a block hash must be below. A lower target means a higher
-  difficulty.
+- **Target**: The number a block hash must not exceed. A lower target means a
+  higher difficulty.
 - **Tor / .onion**: Tor is a network that hides where requests come from. `.onion`
   addresses can only be reached through it, for example in Tor Browser.
-- **Transaction id (txid)**: A transaction's unique fingerprint: 64 hexadecimal characters.
+- **Transaction id (txid)**: A transaction's fingerprint: 64 hexadecimal
+  characters. Practically unique, though two early coinbase transactions were
+  each repeated once (BIP 30).
 - **UTXO set**: The set of all unspent transaction outputs: every coin that exists
   right now. Only full nodes keep it, which is why balances can't be
   proved in a browser.

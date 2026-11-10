@@ -13,7 +13,11 @@ import {
   targetFromBits,
   MAINNET_POW_LIMIT,
   parseTransaction,
-  txidFromRaw
+  txidFromRaw,
+  computeMerkleRootChecked,
+  checkMerkleProof,
+  validTargetFromBits,
+  blockHashFromHeader
 } from '../spv.js';
 
 // Block 100000: four transactions.
@@ -212,4 +216,60 @@ test('segwit serialization: witness does not change the txid', async () => {
 test('malformed raw transactions are rejected', () => {
   assert.throws(() => parseTransaction(GENESIS_RAW.slice(0, -10)), /Truncated/);
   assert.throws(() => parseTransaction(GENESIS_RAW + '00'), /Trailing/);
+});
+
+// ---------------------------------------------------------------
+// Audit regressions
+// ---------------------------------------------------------------
+
+test('CVE-2012-2459: a repeated last txid rebuilds the root but is flagged', async () => {
+  const three = BLOCK_100000_TXIDS.slice(0, 3);
+  const honest = await computeMerkleRootChecked(three);
+  const padded = await computeMerkleRootChecked([...three, three[2]]);
+  assert.equal(padded.root, honest.root); // same root: why the flag is needed
+  assert.equal(honest.mutated, false);
+  assert.equal(padded.mutated, true);
+  assert.equal(await verifyMerkleRoot([...three, three[2]], honest.root), false);
+  assert.equal(await verifyMerkleRoot(three, honest.root), true);
+});
+
+test('real blocks are not flagged as mutated', async () => {
+  assert.equal((await computeMerkleRootChecked(BLOCK_100000_TXIDS)).mutated, false);
+  assert.equal((await computeMerkleRootChecked([GENESIS_TXID])).mutated, false);
+});
+
+test('a Merkle proof pairing a right-hand node with an identical left sibling is flagged', async () => {
+  const [a, b, c] = BLOCK_100000_TXIDS;
+  // Honest proof for c (index 2 of 3): sibling is c itself, on the right.
+  const honest = await checkMerkleProof(c, [c, await merkleRootFromProof(a, [b], 0)], 2);
+  assert.equal(honest.mutated, false);
+  // The phantom 4th leaf (a copy of c at index 3) reaches the same root.
+  const phantom = await checkMerkleProof(c, [c, await merkleRootFromProof(a, [b], 0)], 3);
+  assert.equal(phantom.root, honest.root);
+  assert.equal(phantom.mutated, true);
+});
+
+test('zero, negative and oversized targets are invalid, not a crash', async () => {
+  assert.equal(validTargetFromBits(0x1d000000), null);  // zero
+  assert.equal(validTargetFromBits(0x04800001), null);  // negative
+  assert.equal(validTargetFromBits(0xff123456), null);  // beyond 256 bits
+  assert.equal(validTargetFromBits(0x1d00ffff), MAINNET_POW_LIMIT);
+
+  const zero = GENESIS_HEADER.slice(0, 144) + '0000001d' + '00000000';
+  const r = await verifyHeaderPoW(zero, await blockHashFromHeader(zero));
+  assert.equal(r.ok, false);
+  assert.equal(r.checks.meetsTarget, false);
+  assert.equal(r.checks.withinPowLimit, false);
+  assert.equal(r.difficulty, null);
+});
+
+test('parseTransaction recognises a coinbase by its null outpoint', () => {
+  assert.equal(parseTransaction(GENESIS_RAW).coinbase, true);
+});
+
+test('parseTransaction computes BIP141 weight', () => {
+  // Legacy transaction: weight = 4 x size. Genesis coinbase: 204 bytes.
+  const g = parseTransaction(GENESIS_RAW);
+  assert.equal(g.size, 204);
+  assert.equal(g.weight, 816);
 });

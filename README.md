@@ -50,8 +50,8 @@ confirming a payment, checking a block, using your own node and more.
 | On | Your browser proves | It can't prove |
 |---|---|---|
 | **Blocks** | The header has valid proof of work. The difficulty follows Bitcoin's rules, traced back to the genesis block. The transaction list matches the header. | That the block is on the chain with the most work. |
-| **Transactions** | The contents match the txid. Each input's amount comes from the transaction it spends, so the fee is right. A Merkle proof shows that the transaction is in its block. | That the coins spent were still unspent. |
-| **The chain** | Independent providers agree on the newest block. Optional: the chain's total work, matching Bitcoin Core's `chainwork`. | Anything, with only one provider. |
+| **Transactions** | The contents match the txid. Each input's amount comes from the transaction it spends, so the fee is right. A Merkle proof shows that the transaction is in its block, and every provider has that block at that height. | That the coins spent were still unspent. |
+| **The chain** | Independent providers agree on the newest block, and one that is ahead builds on the others' tips with the difficulty Bitcoin requires. Optional: the chain's total work, matching Bitcoin Core's `chainwork`. | Anything, with only one provider. |
 | **Addresses, mempool, fees** | Nothing. These are shown as reported and marked **Not verified**. | Balances need the full UTXO set, which only full nodes keep. |
 
 Every check, with exactly what it proves and doesn't, is in
