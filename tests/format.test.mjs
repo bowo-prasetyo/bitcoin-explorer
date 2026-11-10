@@ -10,7 +10,9 @@ import {
   formatVsize,
   vsizeFromWeight,
   addressNetValue,
-  sumValues
+  sumValues,
+  formatLocalTime,
+  histogramBuckets
 } from '../format.js';
 
 test('formatBtc is exact on integer sats', () => {
@@ -73,4 +75,24 @@ test('addressNetValue nets received minus spent', () => {
   assert.equal(addressNetValue({ vin: [{ is_coinbase: true }], vout: [] }, 'A'), 0);
   assert.equal(sumValues(tx.vout), 1300);
   assert.equal(sumValues(tx.vin, v => v.prevout?.value), 1500);
+});
+
+test("formatLocalTime: the viewer's zone, or null when it reads like UTC", () => {
+  const genesis = 1231006505; // 2009-01-03 18:15:05 UTC
+  assert.equal(formatLocalTime(genesis, 'UTC'), null);
+  assert.equal(formatLocalTime(genesis, 'Europe/London'), null); // GMT in winter
+  assert.match(formatLocalTime(genesis, 'Europe/Berlin'), /^3 Jan 2009, 19:15 (CET|GMT\+1)$/);
+  assert.match(formatLocalTime(genesis, 'Asia/Jakarta'), /^4 Jan 2009, 01:15 (WIB|GMT\+7)$/);
+  assert.equal(formatLocalTime(0), null);
+  assert.equal(formatLocalTime(undefined), null);
+});
+
+test('histogramBuckets: ranges from each rate up to the previous one', () => {
+  assert.deepEqual(histogramBuckets([[50, 100], [20.04, 200], [1, 300]]), [
+    { label: '50+', from: 50, to: null, vsize: 100 },
+    { label: '20–50', from: 20, to: 50, vsize: 200 },
+    { label: '1–20', from: 1, to: 20, vsize: 300 }
+  ]);
+  assert.deepEqual(histogramBuckets([]), []);
+  assert.deepEqual(histogramBuckets(undefined), []);
 });

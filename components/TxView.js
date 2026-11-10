@@ -13,6 +13,7 @@ import {
   formatNumber,
   formatSats,
   formatTime,
+  formatLocalTime,
   sumValues,
   vsizeFromWeight
 } from '../format.js';
@@ -72,6 +73,7 @@ export default {
           <dd>
             {{ formatTime(tx.status.block_time) }}
             <span class="muted">({{ ago(tx.status.block_time) }})</span>
+            <span v-if="formatLocalTime(tx.status.block_time)" class="local-time muted small">{{ formatLocalTime(tx.status.block_time) }} your time</span>
           </dd>
         </template>
 
@@ -244,6 +246,7 @@ export default {
     formatNumber,
     formatSats,
     formatTime,
+    formatLocalTime,
     vsizeFromWeight,
 
     ago(unixSeconds) {

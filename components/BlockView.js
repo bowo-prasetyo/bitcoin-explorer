@@ -18,10 +18,12 @@ import {
   formatFeeRate,
   formatNumber,
   formatTime,
+  formatLocalTime,
   sumValues
 } from '../format.js';
 
 import { now } from './DataStatus.js';
+import { blockTitle } from '../titles.js';
 
 import {
   verifyBlockDifficulty,
@@ -63,7 +65,10 @@ export default {
 
       <dl v-if="block" class="facts">
         <dt>Mined</dt>
-        <dd>{{ formatTime(block.timestamp) }} <span class="muted">({{ ago(block.timestamp) }})</span></dd>
+        <dd>
+          {{ formatTime(block.timestamp) }} <span class="muted">({{ ago(block.timestamp) }})</span>
+          <span v-if="formatLocalTime(block.timestamp)" class="local-time muted small">{{ formatLocalTime(block.timestamp) }} your time</span>
+        </dd>
 
         <dt><glossary-term term="confirmations">Confirmations</glossary-term></dt>
         <dd>{{ confirmations === null ? '…' : formatNumber(confirmations) }}</dd>
@@ -109,7 +114,7 @@ export default {
       <verify-badge v-if="txs.length" :result="txListCheck"></verify-badge>
 
       <div v-if="txs.length" class="table-scroll">
-        <table>
+        <table class="stack-sm">
           <thead>
             <tr>
               <th class="num">#</th>
@@ -120,12 +125,12 @@ export default {
           </thead>
           <tbody>
             <tr v-for="(tx, i) in txs" :key="tx.txid">
-              <td class="num muted">{{ formatNumber(firstIndex + i + 1) }}</td>
-              <td class="hash">
+              <td class="num muted" data-label="#">{{ formatNumber(firstIndex + i + 1) }}</td>
+              <td class="hash full">
                 <router-link :to="'/tx/' + tx.txid">{{ tx.txid }}</router-link>
               </td>
-              <td class="num">{{ formatBtc(sumValues(tx.vout)) }}</td>
-              <td class="num">
+              <td class="num" data-label="Output total">{{ formatBtc(sumValues(tx.vout)) }}</td>
+              <td class="num" data-label="Fee rate">
                 <span v-if="tx.vin?.[0]?.is_coinbase" class="tag">coinbase</span>
                 <span v-else>{{ formatFeeRate(tx.fee, tx.weight) }}</span>
               </td>
@@ -229,6 +234,7 @@ export default {
     formatFeeRate,
     formatNumber,
     formatTime,
+    formatLocalTime,
     sumValues,
 
     ago(unixSeconds) {
@@ -362,6 +368,7 @@ export default {
           this.block = data.block;
           this.tipHeight = data.tipHeight ?? null;
           this.nextHash = data.nextHash ?? null;
+          document.title = blockTitle(data.block.height);
           this.verifyHeader();
         },
 

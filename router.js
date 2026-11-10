@@ -6,8 +6,9 @@ import ChartsView from './components/ChartsView.js';
 import ProvidersView from './components/ProvidersView.js';
 import GlossaryView from './components/GlossaryView.js';
 import NotFound from './components/NotFound.js';
+import { titleFor } from './titles.js';
 
-export default VueRouter.createRouter({
+const router = VueRouter.createRouter({
   history: VueRouter.createWebHashHistory(),
 
   routes: [
@@ -21,3 +22,11 @@ export default VueRouter.createRouter({
     { path: '/:unknown(.*)*', component: NotFound }
   ]
 });
+
+// A title per page, so tabs and history can be told apart. Views may
+// refine it once their data loads (e.g. a block's height).
+router.afterEach(to => {
+  document.title = titleFor(to);
+});
+
+export default router;

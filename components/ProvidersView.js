@@ -48,7 +48,7 @@ export default {
       </p>
 
       <div class="table-scroll">
-        <table>
+        <table class="stack-sm">
           <thead>
             <tr>
               <th>Provider</th>
@@ -59,7 +59,7 @@ export default {
           </thead>
           <tbody>
             <tr v-for="p in health" :key="p.base">
-              <td>
+              <td class="full"><div>
                 {{ p.name }}
                 <span v-if="p.preferred" class="tag tag-ok">preferred</span>
                 <span v-if="p.distrusted" class="tag tag-fail">not used</span>
@@ -70,10 +70,10 @@ export default {
                   <button type="button" class="link-button" @click="useAgain(p)">Use it again</button>
                 </div>
                 <div v-if="p.lastError" class="small neg">Last error: {{ p.lastError }}</div>
-              </td>
-              <td class="num">{{ p.latency === null ? '–' : p.latency + ' ms' }}</td>
-              <td class="num">{{ p.success }} / {{ p.failure }}</td>
-              <td>{{ p.lastSuccess ? ago(p.lastSuccess) : 'not yet' }}</td>
+              </div></td>
+              <td class="num" data-label="Latency">{{ p.latency === null ? '–' : p.latency + ' ms' }}</td>
+              <td class="num" data-label="OK / failed">{{ p.success }} / {{ p.failure }}</td>
+              <td data-label="Last success">{{ p.lastSuccess ? ago(p.lastSuccess) : 'not yet' }}</td>
             </tr>
           </tbody>
         </table>
@@ -186,7 +186,7 @@ export default {
           <button type="submit" :disabled="testing || !endpoint">
             {{ testing ? 'Testing…' : 'Test' }}
           </button>
-          <button type="button" @click="save" :disabled="!testResult?.ok">
+          <button type="button" class="primary" @click="save" :disabled="!testResult?.ok">
             Save
           </button>
           <button type="button" v-if="settings.custom" @click="remove">
