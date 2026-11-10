@@ -9,6 +9,16 @@ against the live data providers.
 
 ### Added
 
+- **Light mode.** Assay follows the device's light or dark setting, and
+  switches live when it changes. A **Theme** choice in the footer
+  (System, Light, Dark) overrides it and is remembered. The theme is
+  applied before the first paint, so there's no dark flash. Both
+  palettes are checked for WCAG contrast by a unit test (4.5:1 for text,
+  3:1 for borders, focus rings and chart lines); verified, failed and
+  warning states keep their green, red and amber meaning in both. The
+  logo, charts and the browser or installed app's title bar follow the
+  theme.
+
 - **Witness data (BIP141):** transaction pages download the
   transaction's block and check that its coinbase commits to every
   transaction's full bytes, signatures included. The block must hash to
@@ -87,6 +97,11 @@ be green for made-up data. Fixed:
 
 - Glossary: proof of work and target are "at or below"; txids are
   practically, not strictly, unique (BIP 30).
+
+### Fixed
+
+- Glossary pop-ups: a space was missing after the term ("Confirmations:How
+  many…").
 
 ## [1.0.0] — 2026-11-10
 

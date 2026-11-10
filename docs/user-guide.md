@@ -41,6 +41,23 @@ The header is the same on every page:
 The footer links to the **Glossary**, this guide, [What your browser
 verifies](verification.md) and the source code.
 
+### Light and dark
+
+Assay follows your device's setting: light if your phone or computer is
+set to light mode, dark otherwise. It switches by itself when the device
+does, for example at sunset. To pick one regardless of the device, use
+**Theme** in the footer:
+
+| Choice | Assay is |
+|---|---|
+| **System** (the default) | Light or dark, as your device is set |
+| **Light** | Always light |
+| **Dark** | Always dark |
+
+The choice is remembered in this browser. Badges keep their colours'
+meaning in both: green ✓ verified, red ✗ failed, grey couldn't check or
+nothing to check, amber notices.
+
 The home page has these cards. On a wide screen they sit side by side,
 two to a row; on a phone, one below the other:
 
@@ -461,7 +478,7 @@ and work offline. Nothing is sent anywhere.
 | Recently viewed data (blocks, transactions, addresses, mempool) | Up to 7 days, at most 500 entries |
 | Block headers used by the difficulty and total-work checks and the history charts (about 80 bytes each) | Until you clear them |
 | The last 50 mempool-chart samples | Until pruned with the rest of the cache |
-| Your endpoint, live updates on/off, total-work opt-in, the last provider that worked | Until you change or clear them |
+| Your endpoint, live updates on/off, total-work opt-in, the last provider that worked, your theme choice | Until you change or clear them |
 | Providers left out of lookups for sending an invalid chain tip, with the reason | Until a tip check passes, or 24 hours |
 | Assay's own files and the three libraries it uses (about 650 KB), so it opens offline | Replaced by newer copies whenever you're online |
 

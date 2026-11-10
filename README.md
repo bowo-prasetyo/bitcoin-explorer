@@ -74,6 +74,8 @@ Every check, with exactly what it proves and doesn't, is in
   at least 44 px tall on touch screens, wide tables become cards on
   phones, each page has its own tab title, and times show your own time
   zone next to UTC.
+- **Light and dark:** follows the device's setting live, or a Theme
+  choice in the footer; both palettes are contrast-checked by a test.
 - **Blocks:** time, confirmations, size, weight, links to neighbouring
   blocks, and all transactions, 25 per page.
 - **Transactions:** status, confirmations, fee and fee rate, size, every
@@ -223,6 +225,8 @@ the browser suites cover.
 | `live.js` | Live "new block" notifications over WebSocket |
 | `sw.js` | Service worker: saves the app for offline use (not Bitcoin data) |
 | `connection.js` | Online/offline state, service worker registration, the install button |
+| `theme.js` | Picks light or dark before the first paint (plain script in `<head>`) |
+| `chart-theme.js` | Chart colours from the active palette; recolours charts on a theme change |
 | `manifest.webmanifest`, `icon-*.png` | Makes the app installable: name, colours, icons |
 | `consensus.js` | Compares chain tips across providers |
 | `distrust.js` | Leaves providers that sent an invalid tip out of lookups, and when to let them back in |
