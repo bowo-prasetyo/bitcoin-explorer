@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parentTxids, checkSpentOutputs } from '../inputs.js';
+import { parentTxids, checkSpentOutputs, isCoinbaseTx } from '../inputs.js';
 import { reverseHex, txidFromRaw } from '../spv.js';
 
 // Real parent: the genesis coinbase (one output, 50 BTC, P2PK).
@@ -27,9 +27,23 @@ const child = (vin, extra = {}) => ({
 const spendGenesis = (prevout = { value: 5000000000, scriptpubkey: G_SPK }) =>
   ({ txid: G_TXID, vout: 0, prevout });
 
-test('parentTxids dedupes and skips coinbase', () => {
-  const tx = child([spendGenesis(), spendGenesis(), { is_coinbase: true }]);
-  assert.deepEqual(parentTxids(tx), [G_TXID]);
+const NULL_INPUT = { is_coinbase: true, txid: '0'.repeat(64), vout: 0xffffffff };
+
+test('parentTxids dedupes', () => {
+  assert.deepEqual(parentTxids(child([spendGenesis(), spendGenesis()])), [G_TXID]);
+});
+
+test("parentTxids ignores the provider's coinbase flag on an ordinary input", () => {
+  const tx = child([spendGenesis(), { ...spendGenesis(), txid: 'd'.repeat(64), is_coinbase: true }]);
+  assert.deepEqual(parentTxids(tx), [G_TXID, 'd'.repeat(64)]);
+});
+
+test('isCoinbaseTx follows Bitcoin: one input, spending the null outpoint', () => {
+  assert.equal(isCoinbaseTx(child([NULL_INPUT])), true);
+  assert.equal(isCoinbaseTx(child([{ ...spendGenesis(), is_coinbase: true }])), false);
+  assert.equal(isCoinbaseTx(child([NULL_INPUT, NULL_INPUT])), false);
+  assert.equal(isCoinbaseTx(child([{ ...NULL_INPUT, vout: 0 }])), false);
+  assert.deepEqual(parentTxids(child([NULL_INPUT])), []);
 });
 
 test('an honest input is verified against the raw parent', async () => {
@@ -77,10 +91,19 @@ test('missing parent, unreadable parent, or missing output fails', async () => {
 });
 
 test('coinbase inputs are not counted as spending anything', async () => {
-  const r = await checkSpentOutputs(child([{ is_coinbase: true }]), {});
+  const r = await checkSpentOutputs(child([NULL_INPUT]), {});
   assert.equal(r.ok, true);
   assert.equal(r.totalIn, 0);
   assert.equal(r.perInput[0].coinbase, true);
+});
+
+test('an input flagged "coinbase" by the provider is still checked', async () => {
+  // Audit finding: flagging an input as coinbase used to hide it.
+  const hidden = { txid: 'd'.repeat(64), vout: 0, is_coinbase: true };
+  const r = await checkSpentOutputs(child([spendGenesis(), hidden]), { [G_TXID]: G_RAW });
+  assert.equal(r.ok, false);
+  assert.equal(r.perInput[1].coinbase, undefined);
+  assert.match(r.perInput[1].reason, /not available/);
 });
 
 test('a real child transaction built here hashes consistently', async () => {

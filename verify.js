@@ -27,20 +27,21 @@ import {
   getMerkleProof,
   getTipFromEach,
   getBlockHashFrom,
+  getBlockHashFromEach,
   recordTipCheck
 } from './api.js';
 
 import {
   verifyHeaderPoW,
-  computeMerkleRoot,
-  merkleRootFromProof,
+  computeMerkleRootChecked,
+  checkMerkleProof,
   parseTransaction,
   txidFromRaw
 } from './spv.js';
 
 import { compareTips, checkTipHeaders } from './consensus.js';
 
-import { parentTxids, checkSpentOutputs } from './inputs.js';
+import { parentTxids, checkSpentOutputs, isCoinbaseTx } from './inputs.js';
 
 import { formatBtc, formatSats } from './format.js';
 
@@ -51,7 +52,8 @@ import {
   checkDifficulty,
   checkDifficultyHistory,
   periodStart,
-  RETARGET_INTERVAL
+  RETARGET_INTERVAL,
+  GENESIS_HASH
 } from './difficulty.js';
 
 import {
@@ -100,6 +102,7 @@ export function formatBigPower(big) {
 }
 
 function formatDifficulty(d) {
+  if (d === null) return '–';
   if (d >= 1e12) return `${(d / 1e12).toFixed(2)} T`;
   if (d >= 1e9) return `${(d / 1e9).toFixed(2)} G`;
   if (d >= 1e6) return `${(d / 1e6).toFixed(2)} M`;
@@ -148,7 +151,7 @@ function powChecks(pow) {
 function powFacts(pow) {
   return [
     { label: 'Difficulty', value: formatDifficulty(pow.difficulty) },
-    { label: 'Expected work', value: `${formatBigPower(pow.expectedHashes)} hashes` }
+    { label: 'Expected work', value: pow.expectedHashes === null ? '–' : `${formatBigPower(pow.expectedHashes)} hashes` }
   ];
 }
 
@@ -293,10 +296,12 @@ export async function verifyBlockDifficulty(block, header, tipHeight = null) {
 export async function verifyBlockTransactions(block, merkleRoot, shown = [], firstIndex = 0) {
   try {
     const txids = await getBlockTxids(block.id);
-    const root = await computeMerkleRoot(txids);
+    const { root, mutated } = await computeMerkleRootChecked(txids);
 
     const checks = [
       { label: `All ${txids.length.toLocaleString('en-US')} txids rebuild the header's Merkle root`, ok: root === merkleRoot },
+      // CVE-2012-2459: repeating the last txid(s) rebuilds the same root.
+      { label: 'No transaction is listed twice', ok: !mutated && new Set(txids).size === txids.length },
       { label: 'Transaction count matches', ok: txids.length === block.tx_count },
       {
         label: 'Transactions on this page are in that list, in order',
@@ -335,18 +340,37 @@ export async function verifyTransactionContents(tx) {
         o.scriptpubkey === tx.vout[i].scriptpubkey
       );
 
+    // Every input, coinbase or not: a provider must not be able to flag
+    // an ordinary input as "coinbase" to have it skipped.
     const inputsMatch =
       parsed.vin.length === tx.vin.length &&
       parsed.vin.every((v, i) =>
-        tx.vin[i].is_coinbase ||
-        (v.txid === tx.vin[i].txid && v.vout === tx.vin[i].vout)
+        v.txid === tx.vin[i].txid && v.vout === tx.vin[i].vout
       );
+
+    // Coinbase by Bitcoin's rule (one input spending the null outpoint),
+    // and the page's coinbase labels say the same.
+    const coinbaseMatch =
+      isCoinbaseTx(tx) === parsed.coinbase &&
+      tx.vin.every(v => !!v.is_coinbase === parsed.coinbase);
 
     const checks = [
       { label: 'Raw transaction hashes to this txid', ok: txid === tx.txid },
       { label: 'Output amounts and scripts match what is shown', ok: outputsMatch },
-      { label: 'Spent outputs (inputs) match what is shown', ok: inputsMatch }
+      { label: 'Spent outputs (inputs) match what is shown', ok: inputsMatch },
+      {
+        label: parsed.coinbase
+          ? 'It is a coinbase: its only input spends no earlier output'
+          : 'It is not a coinbase: every input spends an earlier output',
+        ok: coinbaseMatch
+      }
     ];
+
+    // The fee rate shown divides by the weight. The witness isn't covered
+    // by the txid, so this only proves the weight matches the raw bytes.
+    if (tx.weight !== undefined) {
+      checks.push({ label: 'Weight matches the raw transaction (for the fee rate)', ok: parsed.weight === tx.weight });
+    }
 
     const ok = allOk(checks);
 
@@ -360,7 +384,9 @@ export async function verifyTransactionContents(tx) {
             'transactions whose outputs are being spent.'
           : undefined,
         // Verified output total, for the fee check.
-        outputTotal: ok ? parsed.vout.reduce((sum, o) => sum + o.value, 0) : null
+        outputTotal: ok ? parsed.vout.reduce((sum, o) => sum + o.value, 0) : null,
+        // Coinbase or not, from the raw bytes; null unless verified.
+        coinbase: ok ? parsed.coinbase : null
       }
     );
   } catch (err) {
@@ -393,9 +419,19 @@ async function mapLimit(items, limit, fn) {
 // That every input's amount (and script) is what the transaction it
 // spends from says, by hashing each parent's raw bytes; then, with the
 // outputs verified by verifyTransactionContents, that the fee adds up.
-export async function verifyTransactionInputs(tx, { outputTotal = null, force = false } = {}) {
-  if (tx.vin?.[0]?.is_coinbase) {
-    return result('na', 'Coinbase: it creates new coins, so there are no spent amounts to check.');
+// `coinbase` is verifyTransactionContents' verdict (true, false or null when
+// it couldn't run): a coinbase is only skipped once the raw bytes say so.
+export async function verifyTransactionInputs(tx, { outputTotal = null, coinbase = null, force = false } = {}) {
+  if (isCoinbaseTx(tx) || tx.vin?.some(v => v.is_coinbase)) {
+    if (coinbase === true) {
+      return result('na', 'Coinbase: it creates new coins, so there are no spent amounts to check.');
+    }
+    if (coinbase === null) {
+      return result('error', "Couldn't confirm from the raw transaction that this is a coinbase");
+    }
+    return result('fail', 'Input amounts check FAILED', [
+      { label: 'Inputs shown as "coinbase" really are one', ok: false }
+    ], { note: 'The raw transaction spends earlier outputs, so it is not a coinbase.' });
   }
 
   const parents = parentTxids(tx);
@@ -452,10 +488,17 @@ export async function verifyTransactionInputs(tx, { outputTotal = null, force = 
     const computedFee = feeCheckable ? r.totalIn - outputTotal : null;
 
     if (feeCheckable) {
-      checks.push({
-        label: `Fee = inputs − outputs = ${formatSats(computedFee)}, as shown`,
-        ok: computedFee === tx.fee
-      });
+      checks.push(
+        {
+          // Bitcoin Core: bad-txns-in-belowout.
+          label: 'Inputs cover the outputs (the fee is not negative)',
+          ok: computedFee >= 0
+        },
+        {
+          label: `Fee = inputs − outputs = ${formatSats(computedFee)}, as shown`,
+          ok: computedFee === tx.fee
+        }
+      );
     }
 
     const ok = checks.every(c => c.ok);
@@ -502,7 +545,15 @@ export function chainWorkHeaderCount(tipHeight) {
 // checked header per difficulty period. Headers come from the local
 // header store when deep enough, so after a first run only new periods
 // cost a request. onProgress(done, total) reports header loading.
-export async function verifyChainWork(tip, { onProgress = () => {} } = {}) {
+//
+// The total is computed only from the period difficulties that the
+// difficulty history (verifyDifficultyHistory) has traced back to the
+// genesis block. A header's own proof of work is cheap at a low claimed
+// difficulty, so on its own it can't vouch for a period's difficulty: a
+// header saved under the wrong height, or made up by a provider, would
+// otherwise change the total and still pass. The history result is
+// returned as `history` so the caller can show it without a second run.
+export async function verifyChainWork(tip, { onProgress = () => {}, onHistoryProgress = () => {} } = {}) {
   try {
     const { pow: tipPow } = await loadVerifiedHeader(tip.id, tip.height);
 
@@ -546,13 +597,51 @@ export async function verifyChainWork(tip, { onProgress = () => {} } = {}) {
       {
         label: "The tip's difficulty matches its period's first block",
         ok: tipPow.header.bits === bits[starts[starts.length - 1]]
+      },
+      {
+        label: 'Starts from the genesis block',
+        ok: loaded[0].hash === GENESIS_HASH
       }
     ];
 
-    const ok = checks.every(c => c.ok);
-
-    if (!ok) {
+    if (!checks.every(c => c.ok)) {
       return result('fail', 'Total work check FAILED', checks);
+    }
+
+    // Every period's difficulty, traced back to the genesis block.
+    let history = null;
+
+    if (starts.length > 1) {
+      history = await verifyDifficultyHistory(tip.height, {
+        tipHeight: tip.height,
+        onProgress: onHistoryProgress
+      });
+
+      if (history.state === 'error') {
+        return { ...result('error', "Couldn't add up the total work", checks, {
+          note: "The difficulty history it relies on couldn't be checked."
+        }), history };
+      }
+
+      const traced = history.state === 'ok';
+
+      checks.push({
+        label: "Every period's difficulty is traced back to the genesis block",
+        ok: traced
+      });
+
+      if (!traced) {
+        return { ...result('fail', 'Total work check FAILED', checks), history };
+      }
+
+      // Use exactly the difficulties the history check verified.
+      Object.assign(bits, history.periodBits);
+
+      checks[1].ok = tipPow.header.bits === bits[starts[starts.length - 1]];
+
+      if (!checks[1].ok) {
+        return { ...result('fail', 'Total work check FAILED', checks), history };
+      }
     }
 
     const work = chainWork(bits, tip.height);
@@ -565,6 +654,7 @@ export async function verifyChainWork(tip, { onProgress = () => {} } = {}) {
       checks,
       {
         work,
+        history,
         facts: [
           { label: 'Total work', value: `${formatBigPower(work)} hashes (2^${bitsOfWork})` },
           { label: 'To redo it', value: `${formatRedoTime(years)} of all miners' work at today's difficulty` },
@@ -572,9 +662,10 @@ export async function verifyChainWork(tip, { onProgress = () => {} } = {}) {
         ],
         note:
           'The same number Bitcoin Core reports as "chainwork": compare it with ' +
-          'the output of "bitcoin-cli getblockchaininfo" on your own node. It assumes each ' +
+          'the output of "bitcoin-cli getblockchaininfo" on your own node. Each ' +
+          "period's difficulty is traced back to the genesis block; it assumes each " +
           "period's blocks carry its first header's difficulty, as mainnet's " +
-          'rules require; it does not link every header to the next.'
+          'rules require, and does not link every header to the next.'
       }
     );
   } catch (err) {
@@ -716,6 +807,11 @@ export async function verifyDifficultyHistory(height, {
         // For the Charts page: one point per period, from exactly the
         // headers just checked. Never built from a failed check.
         series: r.ok ? historySeries(loaded.starts, loaded.ends, lastStart) : null,
+        // For the total-work check: { [periodStart]: bits }, only when every
+        // one of them was traced back to the genesis block.
+        periodBits: r.ok
+          ? Object.fromEntries(Object.entries(loaded.starts).map(([h, x]) => [h, x.bits]))
+          : null,
         note: r.ok
           ? "This period's difficulty follows from the genesis block through every " +
             'retarget, using only proof-of-work-checked headers. Blocks inside a ' +
@@ -728,7 +824,47 @@ export async function verifyDifficultyHistory(height, {
   }
 }
 
-// That the transaction is in a block whose proof of work checks out.
+// Do the other providers have this block at this height? A block's own
+// proof of work is cheap at a low claimed difficulty, so a provider could
+// invent a block for a made-up payment; it can't make independent
+// providers report that block. Returns a check, or a `pending` reason when
+// fewer than two providers could confirm it.
+async function checkBlockAtHeight(height, hash) {
+  const answers = await getBlockHashFromEach(height);
+  const n = answers.length;
+  const h = height.toLocaleString('en-US');
+
+  const differing = answers.filter(a => a.ok && a.hash !== hash);
+  const agreeing = answers.filter(a => a.ok && a.hash === hash);
+
+  if (differing.length) {
+    return {
+      check: {
+        label: `${differing.map(a => a.name).join(', ')} ${differing.length === 1 ? 'has' : 'have'} a different block at height ${h}`,
+        ok: false
+      }
+    };
+  }
+
+  if (n === 1) {
+    return {
+      check: { label: `Your only provider has this block at height ${h} (no second provider to compare)`, ok: agreeing.length === 1 },
+      single: true
+    };
+  }
+
+  const check = {
+    label: `${agreeing.length} of ${n} providers have this block at height ${h}`,
+    ok: agreeing.length >= 2
+  };
+
+  return agreeing.length >= 2
+    ? { check }
+    : { check, pending: `Only ${agreeing.length} of ${n} providers could confirm block ${h} yet` };
+}
+
+// That the transaction is in a block whose proof of work checks out, and
+// that independent providers have that block at that height.
 export async function verifyTransactionInclusion(tx) {
   if (!tx.status?.confirmed) {
     return result('na', 'Not in a block yet, so there is nothing to prove.');
@@ -740,29 +876,48 @@ export async function verifyTransactionInclusion(tx) {
       loadVerifiedHeader(tx.status.block_hash, tx.status.block_height)
     ]);
 
-    const root = await merkleRootFromProof(tx.txid, proof.merkle, proof.pos);
+    const { root, mutated } = await checkMerkleProof(tx.txid, proof.merkle, proof.pos);
 
     const checks = [
-      { label: 'Merkle proof leads from this txid to the block header', ok: root === pow.header.merkleRoot },
+      { label: 'Merkle proof leads from this txid to the block header', ok: root === pow.header.merkleRoot && !mutated },
       { label: 'Block header has valid proof of work', ok: pow.ok },
       { label: 'Proof is for the block shown', ok: proof.block_height === tx.status.block_height }
     ];
 
-    const ok = allOk(checks);
+    const facts = [
+      { label: 'Position in block', value: `#${(proof.pos + 1).toLocaleString('en-US')}` },
+      { label: 'Proof size', value: `${proof.merkle.length} hashes` }
+    ];
 
-    return result(
-      ok ? 'ok' : 'fail',
-      ok
-        ? `Inclusion in block ${tx.status.block_height.toLocaleString('en-US')} verified`
-        : 'Inclusion check FAILED',
-      checks,
-      {
-        facts: [
-          { label: 'Position in block', value: `#${(proof.pos + 1).toLocaleString('en-US')}` },
-          { label: 'Proof size', value: `${proof.merkle.length} hashes` }
-        ]
-      }
-    );
+    if (!allOk(checks)) {
+      return result('fail', 'Inclusion check FAILED', checks, { facts });
+    }
+
+    const height = tx.status.block_height;
+    const atHeight = await checkBlockAtHeight(height, tx.status.block_hash);
+    checks.push(atHeight.check);
+
+    const h = height.toLocaleString('en-US');
+
+    if (!atHeight.check.ok && !atHeight.pending) {
+      return result('fail', 'Inclusion check FAILED', checks, {
+        facts,
+        note: 'Providers disagree about this block. It may have just been ' +
+          'replaced, or a provider is showing you a block that is not on ' +
+          'the chain.'
+      });
+    }
+
+    if (atHeight.pending) {
+      return result('error', `${atHeight.pending}; inclusion not confirmed`, checks, { facts });
+    }
+
+    return result('ok', `Inclusion in block ${h} verified`, checks, {
+      facts,
+      note: atHeight.single
+        ? 'With only one provider, its word is all there is for which block is at this height.'
+        : undefined
+    });
   } catch (err) {
     return errorResult("Couldn't check inclusion", err);
   }
@@ -777,29 +932,49 @@ export async function verifyTip() {
     // A tip only counts if its header carries valid proof of work. One
     // that fails is marked invalid: a provider sending a fake block is a
     // failure, never just "unreachable".
-    const tips = await checkTipHeaders(await getTipFromEach());
+    const checked = await checkTipHeaders(await getTipFromEach());
 
-    // Leave providers that sent an invalid tip out of lookups; let one
-    // back in once its tip checks out again.
-    recordTipCheck(tips);
-
-    // For providers behind the leader, ask the leader what it has at their
-    // height, to tell "behind on the same chain" from "a different chain".
-    const responding = tips.filter(t => t.ok);
+    // For providers more than one block behind the leader, ask the leader
+    // what it has at their height, to tell "behind on the same chain" from
+    // "a different chain". One block behind is read from the leader's own
+    // header instead.
+    const responding = checked.filter(t => t.ok);
     const leader = responding.reduce((a, b) => (!a || b.height > a.height ? b : a), null);
     const leaderHashes = {};
+    const retargetFirst = {};
 
     for (const t of responding) {
-      if (t !== leader && t.height < leader.height) {
+      if (t === leader || t.height >= leader.height) continue;
+
+      if (leader.height - t.height > 1) {
         try {
           leaderHashes[t.height] = await getBlockHashFrom(leader.base, t.height);
         } catch {
-          // unknown: compareTips reports "behind"
+          // unknown: compareTips reports "unconfirmed"
+        }
+      }
+
+      // The leader's tip starts a new period: its difficulty must be the
+      // retarget from this provider's own headers.
+      const firstHeight = leader.height - RETARGET_INTERVAL;
+      if (leader.height === t.height + 1 && leader.height === periodStart(leader.height) &&
+          firstHeight >= 0 && !retargetFirst[firstHeight]) {
+        try {
+          const hash = await getBlockHashFrom(t.base, firstHeight);
+          const { pow } = await loadVerifiedHeader(hash);
+          if (pow.ok) retargetFirst[firstHeight] = { timestamp: pow.header.timestamp };
+        } catch {
+          // unknown: compareTips reports "unconfirmed"
         }
       }
     }
 
-    const cmp = compareTips(tips, leaderHashes);
+    const cmp = compareTips(checked, leaderHashes, retargetFirst);
+    const tips = cmp.results;
+
+    // Leave providers that sent an invalid tip out of lookups; let one
+    // back in once its tip checks out again.
+    recordTipCheck(tips);
 
     const invalidTitle = cmp.invalid.length === 1
       ? `${cmp.invalid[0]} sent an invalid chain tip`
@@ -809,6 +984,7 @@ export async function verifyTip() {
       invalid: invalidTitle,
       agree: `All ${cmp.responded} providers agree on the tip`,
       behind: 'Providers agree; one is catching up',
+      unconfirmed: "A provider is ahead, but its newest block can't be checked yet",
       conflict: 'Providers DISAGREE on the chain',
       single: cmp.total === 1
         ? 'Only one provider configured: nothing to compare'
@@ -820,6 +996,7 @@ export async function verifyTip() {
       invalid: 'fail',
       agree: 'ok',
       behind: 'ok',
+      unconfirmed: 'na',
       conflict: 'fail',
       single: 'na',
       unavailable: 'error'
@@ -841,12 +1018,14 @@ export async function verifyTip() {
       }
 
       const lag = cmp.lagging.find(l => l.name === t.name);
+      const unconfirmed = cmp.unconfirmed.find(l => l.name === t.name);
       const conflicting = cmp.conflicts.includes(t.name);
 
       return {
         label:
           `${t.name}: block ${t.height.toLocaleString('en-US')} (${short(t.hash)})` +
           (lag ? `, ${lag.by.toLocaleString('en-US')} behind on the same chain` : '') +
+          (unconfirmed ? `, ${unconfirmed.by.toLocaleString('en-US')} behind; the newer blocks can't be checked against it yet` : '') +
           (conflicting ? ', on a DIFFERENT chain' : ''),
         ok: !conflicting
       };
@@ -863,15 +1042,17 @@ export async function verifyTip() {
         error: t.error
       })),
       note: cmp.state === 'invalid'
-        ? 'A tip that fails proof of work is not a real block: the provider ' +
+        ? 'A tip that fails proof of work, or claims a difficulty Bitcoin ' +
+          "doesn't allow after the other providers' tips, is not a real block: the provider " +
           'is broken, or is showing you a fake chain. Assay stops asking ' +
           (cmp.invalid.length === 1 ? 'it' : 'them') + ' for lookups until ' +
           'a tip passes this check again (at most 24 hours; you can let one ' +
           'back in sooner on the Providers page). If it is your own node, ' +
           'check that it runs Bitcoin mainnet.'
-        : 'Each tip header is checked for proof of work. Agreement between ' +
-          'independent providers makes it much harder for one of them to show ' +
-          'you a fake or stale chain.'
+        : 'Each tip header is checked for proof of work, and a tip ahead of ' +
+          "the others must build on their tips with the difficulty Bitcoin " +
+          'requires next. Agreement between independent providers makes it ' +
+          'much harder for one of them to show you a fake or stale chain.'
     };
   } catch (err) {
     return errorResult("Couldn't compare providers", err);

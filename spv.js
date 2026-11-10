@@ -133,20 +133,40 @@ export async function blockHashFromHeader(headerHex) {
   return reverseHex(await doubleSHA256(headerHex));
 }
 
+// The target encoded in `bits`, or null when Bitcoin Core would reject it
+// outright: negative, zero, or wider than 256 bits (CheckProofOfWork).
+export function validTargetFromBits(bits) {
+  let target;
+
+  try {
+    target = targetFromBits(bits);
+  } catch {
+    return null; // negative
+  }
+
+  return target === 0n || target >= (1n << 256n) ? null : target;
+}
+
 // Checks a raw header against a claimed block hash. Returns every check
 // separately so the UI can say exactly what passed.
+//
+// This proves only the work the header itself claims: a header that names
+// the easiest mainnet difficulty passes with about 2^32 hashes, which takes
+// seconds on ordinary hardware. Whether that difficulty is the one required
+// at the block's height is checked separately (difficulty.js, and the
+// cross-provider checks in verify.js and consensus.js).
 export async function verifyHeaderPoW(headerHex, expectedHash) {
   const header = parseHeader(headerHex);
   const hash = await blockHashFromHeader(headerHex);
-  const target = targetFromBits(header.bits);
+  const target = validTargetFromBits(header.bits);
 
   const checks = {
     // The header really is the block the provider named.
     hashMatches: hash === expectedHash.toLowerCase(),
     // Someone did the work: hash <= target encoded in the header.
-    meetsTarget: BigInt('0x' + hash) <= target,
-    // The target isn't easier than mainnet ever allows.
-    withinPowLimit: target <= MAINNET_POW_LIMIT
+    meetsTarget: target !== null && BigInt('0x' + hash) <= target,
+    // The target is a real one, and isn't easier than mainnet ever allows.
+    withinPowLimit: target !== null && target <= MAINNET_POW_LIMIT
   };
 
   return {
@@ -155,8 +175,8 @@ export async function verifyHeaderPoW(headerHex, expectedHash) {
     header,
     hash,
     target,
-    difficulty: difficultyFromTarget(target),
-    expectedHashes: expectedHashes(target)
+    difficulty: target === null ? null : difficultyFromTarget(target),
+    expectedHashes: target === null ? null : expectedHashes(target)
   };
 }
 
@@ -165,13 +185,20 @@ export async function verifyHeaderPoW(headerHex, expectedHash) {
 // =====================================================
 
 // Computes the merkle root of a block's txids (display order, in block
-// order) and returns it in display order.
-export async function computeMerkleRoot(txids) {
+// order). Returns { root (display order), mutated }.
+//
+// `mutated` is Bitcoin Core's check for CVE-2012-2459: because an odd
+// level pairs its last hash with itself, the lists [a, b, c] and
+// [a, b, c, c] have the same root. Core rejects any level where two
+// paired hashes are identical; a real block never has that, since a
+// transaction can't appear twice in one block.
+export async function computeMerkleRootChecked(txids) {
   if (!txids.length) {
     throw new Error('A block has at least one transaction');
   }
 
   let layer = txids.map(reverseHex);
+  let mutated = false;
 
   while (layer.length > 1) {
     const next = [];
@@ -180,13 +207,21 @@ export async function computeMerkleRoot(txids) {
       const left = layer[i];
       const right = layer[i + 1] ?? left; // odd count: pair with itself
 
+      if (i + 1 < layer.length && left === right) {
+        mutated = true;
+      }
+
       next.push(await doubleSHA256(left + right));
     }
 
     layer = next;
   }
 
-  return reverseHex(layer[0]);
+  return { root: reverseHex(layer[0]), mutated };
+}
+
+export async function computeMerkleRoot(txids) {
+  return (await computeMerkleRootChecked(txids)).root;
 }
 
 export async function verifyMerkleRoot(txids, expectedRoot) {
@@ -194,22 +229,32 @@ export async function verifyMerkleRoot(txids, expectedRoot) {
     return false;
   }
 
-  return (await computeMerkleRoot(txids)) === expectedRoot.toLowerCase();
+  const { root, mutated } = await computeMerkleRootChecked(txids);
+  return !mutated && root === expectedRoot.toLowerCase();
 }
 
 // Folds a merkle branch (sibling hashes, display order, leaf to root) for
-// the transaction at index `pos` and returns the root in display order.
-// This is the format of Esplora's /tx/:txid/merkle-proof.
-export async function merkleRootFromProof(txid, branch, pos) {
+// the transaction at index `pos`. This is the format of Esplora's
+// /tx/:txid/merkle-proof. Returns { root (display order), mutated }.
+//
+// `mutated`: a node on the right paired with an identical left sibling.
+// In a real tree identical pairs only come from an odd level's last hash
+// being paired with itself, and that hash is always on the left.
+export async function checkMerkleProof(txid, branch, pos) {
   if (!Number.isInteger(pos) || pos < 0) {
     throw new Error('Invalid position');
   }
 
   let hash = reverseHex(txid);
   let index = pos;
+  let mutated = false;
 
   for (const sibling of branch) {
     const s = reverseHex(sibling);
+
+    if (index & 1 && s === hash) {
+      mutated = true;
+    }
 
     hash = index & 1
       ? await doubleSHA256(s + hash)
@@ -223,15 +268,30 @@ export async function merkleRootFromProof(txid, branch, pos) {
     throw new Error('Position does not match branch length');
   }
 
-  return reverseHex(hash);
+  return { root: reverseHex(hash), mutated };
+}
+
+export async function merkleRootFromProof(txid, branch, pos) {
+  return (await checkMerkleProof(txid, branch, pos)).root;
 }
 
 // =====================================================
 // RAW TRANSACTIONS
 // =====================================================
 
+export const COINBASE_PREV_TXID = '0'.repeat(64);
+export const COINBASE_PREV_VOUT = 0xffffffff;
+
 // Parses a raw transaction (hex) far enough to compute its txid and list
 // its inputs and outputs. Handles segwit (BIP144) serialization.
+//
+// Also returns:
+//   coinbase  exactly one input, spending the null outpoint (all-zero txid,
+//             index 0xffffffff): Bitcoin Core's CTransaction::IsCoinBase.
+//   size      bytes as served, witness included
+//   weight    BIP141 weight: legacy size x 3 + full size. The witness isn't
+//             covered by the txid, so this proves only that the weight
+//             matches these bytes.
 export function parseTransaction(rawHex) {
   const bytes = hexToBytes(rawHex);
   let offset = 0;
@@ -313,7 +373,15 @@ export function parseTransaction(rawHex) {
     bytesToHex(bytes.subarray(bodyStart, bodyEnd)) +
     bytesToHex(locktime);
 
-  return { segwit, vin, vout, legacyHex };
+  const coinbase =
+    vin.length === 1 &&
+    vin[0].txid === COINBASE_PREV_TXID &&
+    vin[0].vout === COINBASE_PREV_VOUT;
+
+  const size = bytes.length;
+  const weight = (legacyHex.length / 2) * 3 + size;
+
+  return { segwit, vin, vout, legacyHex, coinbase, size, weight };
 }
 
 export async function txidFromRaw(rawHex) {

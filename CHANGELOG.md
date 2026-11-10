@@ -7,7 +7,49 @@ against the live data providers.
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+A review of every check against Bitcoin Core's rules found that a
+header's proof of work proves only the work its own difficulty demands,
+about 2³² hashes at the easiest mainnet difficulty, so some badges could
+be green for made-up data. Fixed:
+
+- **Transaction inclusion** now also requires every provider to have the
+  block at that height. Before, a provider could show an invented payment
+  in an invented, cheaply mined block, with every check green. A
+  provider with a different block there fails the check; if no second
+  provider can confirm it yet, the check is grey.
+- **Chain tip agreement:** a provider that is ahead must build on the
+  others' tips (one block ahead: by its own header, not its word) with
+  the difficulty Bitcoin requires next. A cheap tip on top of the real
+  one used to read "Providers agree; one is catching up"; it now fails
+  and that provider is left out of lookups. A lead that can't be checked
+  yet is grey, never a pass.
+- **Coinbase transactions** are recognised from the raw bytes (one input
+  spending no earlier output), not the provider's `is_coinbase` label.
+  Before, flagging an input as coinbase hid it from both the contents and
+  the input-amounts checks.
+- **Fees** can't be negative: inputs must cover outputs.
+- **Block transaction lists** with a repeated transaction now fail.
+  Repeating the last ids rebuilds the same Merkle root (CVE-2012-2459).
+  Merkle proofs that pair a hash with a copy of itself on the wrong side
+  fail too.
+- **Total work** is added up only from period difficulties that the
+  difficulty history traced back to the genesis block, and must start at
+  the genesis block. Before, a header stored under the wrong height
+  could change the total and still pass.
+- **Invalid targets** (zero or negative) are now a red ✗, not "couldn't
+  check".
+
+### Added
+
+- The transaction contents check confirms the weight, used for the fee
+  rate, against the raw transaction.
+
+### Changed
+
+- Glossary: proof of work and target are "at or below"; txids are
+  practically, not strictly, unique (BIP 30).
 
 ## [1.0.0] — 2026-11-10
 

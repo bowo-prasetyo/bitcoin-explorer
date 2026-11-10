@@ -128,7 +128,7 @@ export const GLOSSARY = [
   {
     id: 'proof-of-work',
     term: "Proof of work",
-    text: "Evidence that a lot of computing was spent to produce a block: its hash is below the target. Anyone can check it instantly."
+    text: "Evidence of computing spent to produce a block: its hash is at or below the target. Anyone can check it instantly. The work proved is only as much as the block's difficulty demands, so a block also needs the difficulty Bitcoin requires at its height."
   },
   {
     id: 'retarget',
@@ -138,7 +138,7 @@ export const GLOSSARY = [
   {
     id: 'target',
     term: "Target",
-    text: "The number a block hash must be below. A lower target means a higher difficulty."
+    text: "The number a block hash must not exceed. A lower target means a higher difficulty."
   },
   {
     id: 'tor-onion',
@@ -148,7 +148,7 @@ export const GLOSSARY = [
   {
     id: 'transaction-id',
     term: "Transaction id (txid)",
-    text: "A transaction's unique fingerprint: 64 hexadecimal characters."
+    text: "A transaction's fingerprint: 64 hexadecimal characters. Practically unique, though two early coinbase transactions were each repeated once (BIP 30)."
   },
   {
     id: 'utxo-set',

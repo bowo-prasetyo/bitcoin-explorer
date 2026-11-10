@@ -7,15 +7,36 @@
 // anyone, that the bytes hash to that txid and that the output it names
 // holds the amount and script the page shows for the input.
 
-import { parseTransaction, txidFromRaw } from './spv.js';
+import {
+  parseTransaction,
+  txidFromRaw,
+  COINBASE_PREV_TXID,
+  COINBASE_PREV_VOUT
+} from './spv.js';
+
+// Is this transaction a coinbase, by Bitcoin's own rule rather than the
+// provider's `is_coinbase` flag: exactly one input, spending the null
+// outpoint. verifyTransactionContents checks these fields against the raw
+// transaction, so a provider can't flag an ordinary input as "coinbase"
+// to have it skipped.
+export function isCoinbaseTx(tx) {
+  const vin = tx.vin || [];
+  return (
+    vin.length === 1 &&
+    vin[0].txid === COINBASE_PREV_TXID &&
+    vin[0].vout === COINBASE_PREV_VOUT
+  );
+}
 
 // Distinct parent txids the inputs spend from, in first-seen order.
 export function parentTxids(tx) {
+  if (isCoinbaseTx(tx)) {
+    return [];
+  }
+
   const seen = new Set();
   for (const vin of tx.vin || []) {
-    if (!vin.is_coinbase && vin.txid) {
-      seen.add(vin.txid);
-    }
+    seen.add(vin.txid);
   }
   return [...seen];
 }
@@ -25,6 +46,8 @@ export function parentTxids(tx) {
 // Resolves to {
 //   ok,                         every non-coinbase input verified
 //   perInput: [{ index, ok, coinbase?, value?, reason? }],
+//                               `coinbase` only for a real coinbase
+//                               (isCoinbaseTx), never from `is_coinbase`
 //   parentsOk,                  every parent hashed to its txid
 //   amountsOk,                  every amount and script matched
 //   totalIn                     sum of verified input values (null if !ok)
@@ -49,8 +72,10 @@ export async function checkSpentOutputs(tx, rawByTxid) {
     }
   }
 
+  const coinbase = isCoinbaseTx(tx);
+
   const perInput = (tx.vin || []).map((vin, index) => {
-    if (vin.is_coinbase) {
+    if (coinbase) {
       return { index, ok: true, coinbase: true };
     }
 

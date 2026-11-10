@@ -14,6 +14,10 @@ const G_TXID = '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
 const G_RAW = '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000';
 const G_SPK = '4104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac';
 
+// Block 1: builds on genesis, for a provider exactly one block ahead.
+const B1_HASH = '00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048';
+const B1_HEADER = '010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299';
+
 const K_HASH = '000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506';
 const K_HEADER = '0100000050120119172a610421a6c3011dd330d9df07b63616c2cc1f1cd00200000000006657a9252aacd5c0b2940996ecff952228c3067cc38d4885efb5a4ac4247e9f337221b4d4c86041b0f2b5710';
 const K_TXIDS = [
@@ -74,16 +78,26 @@ function core(scenario) {
 }
 
 let scenario = 'honest';
-let mempoolTip = 'same';       // 'same' | 'behind' | 'conflict' | 'down'
+let mempoolTip = 'same';       // 'same' | 'behind' | 'far-behind' | 'conflict' | 'down'
 const hosts = [];
 
 function mockFor(host, p) {
   const m = core(scenario);
   if (host === 'mempool.space') {
     if (mempoolTip === 'down') return { status: 503, body: 'down' };
-    if (mempoolTip === 'behind' && p === '/blocks/tip/hash') return { body: G_HASH }; // tip "at height 0"
+    // One block behind: mempool.space at genesis while the other is at block 1.
+    if (mempoolTip === 'behind' && p === '/blocks/tip/hash') return { body: G_HASH };
+    // Far behind, across difficulty periods: the leader can't be checked against it.
+    if (mempoolTip === 'far-behind' && p === '/blocks/tip/hash') return { body: G_HASH };
     if (mempoolTip === 'conflict' && p === '/blocks/tip/hash') return { body: G_HASH };
     if (mempoolTip === 'conflict' && p === `/block/${G_HASH}/status`) return { body: JSON.stringify({ height: 100000 }) };
+    // A provider with a different block at height 0 than the one shown.
+    if (scenario === 'other-block' && p === '/block-height/0') return { body: B1_HASH };
+  }
+  if (host === 'blockstream.info' && mempoolTip === 'behind') {
+    if (p === '/blocks/tip/hash') return { body: B1_HASH };
+    if (p === `/block/${B1_HASH}/header`) return { body: B1_HEADER };
+    if (p === `/block/${B1_HASH}/status`) return { body: JSON.stringify({ height: 1 }) };
   }
   if (!(p in m)) return { status: 404, body: 'not found' };
   const v = m[p];
@@ -180,11 +194,22 @@ module.exports = async function ({ chromium, BASE, check }) {
   check('tx: failure names the failing check', /✗ Output amounts and scripts match/.test(failDet) && /✓ Raw transaction hashes to this txid/.test(failDet));
   await shot(page, 'p3-3-tx-tampered.png', true);
 
+  // ---- Another provider has a different block at that height
+  scenario = 'other-block';
+  page = await fresh();
+  await page.goto(BASE + '#/tx/' + G_TXID);
+  await waitBadges(page, 2);
+  b = await badgeTexts(page);
+  check('tx: block not at that height for another provider -> inclusion FAILED',
+    b.some(t => /verify-fail :: Inclusion check FAILED/.test(t)), b.join(' | '));
+  scenario = 'honest';
+
   // ---- Tip agreement
   scenario = 'honest';
   for (const [mode, re, cls] of [
     ['same', /All 2 providers agree on the tip/, 'ok'],
     ['behind', /Providers agree; one is catching up/, 'ok'],
+    ['far-behind', /A provider is ahead, but its newest block can't be checked yet/, 'na'],
     ['conflict', /Providers DISAGREE on the chain/, 'fail'],
     ['down', /Only one provider answered/, 'na']
   ]) {
@@ -197,7 +222,7 @@ module.exports = async function ({ chromium, BASE, check }) {
     if (mode === 'behind') {
       await page.click('.verify >> text=What was checked');
       const d = await page.innerText('.verify');
-      check('tip: behind details name provider and distance', /[Mm]empool\.space: block 0 .*100,000 behind on the same chain/.test(d), d.replace(/\n/g, ' / '));
+      check('tip: behind details name provider and distance', /[Mm]empool\.space: block 0 .*1 behind on the same chain/.test(d), d.replace(/\n/g, ' / '));
     }
     if (mode === 'conflict') await shot(page, 'p3-4-tip-conflict.png');
   }

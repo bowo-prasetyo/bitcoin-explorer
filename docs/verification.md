@@ -45,6 +45,12 @@ valid but abandoned block would also pass. See
 [total work](#total-work-behind-the-tip) and
 [chain tip agreement](#chain-tip-agreement).
 
+On its own it also doesn't prove that **much** work was done: a header
+proves only the work its own difficulty demands. At the easiest mainnet
+difficulty that is about 2³² hashes, seconds on ordinary hardware. That
+is why the next check ties the difficulty to the block's height, and why
+transaction and tip checks compare providers.
+
 ## Block difficulty
 
 **Checks** that the block's difficulty is the one Bitcoin's rules require
@@ -95,11 +101,15 @@ chain.
 
 - The block's full list of transaction ids rebuilds the *Merkle root* in
   its header.
+- No transaction is listed twice. Repeating the last ids of a list
+  rebuilds the same Merkle root (CVE-2012-2459), so this is checked
+  separately, as Bitcoin Core does.
 - The number of transactions matches.
 - The transactions on the current page are in that list, in that order.
 
-**Doesn't prove:** nothing further is needed. A block's transactions
-can't be hidden, added or reordered without failing this check.
+**Doesn't prove** that the transactions themselves are valid (signatures,
+scripts): that takes a full node. A block's transaction list can't be
+hidden, added to or reordered without failing this check.
 
 ## Transaction contents
 
@@ -107,9 +117,16 @@ can't be hidden, added or reordered without failing this check.
 
 - The raw transaction hashes to its *txid*.
 - The output amounts and scripts match what's shown.
-- The spent outputs (inputs) match what's shown.
+- The spent outputs (inputs) match what's shown, every one of them.
+- Whether it's a *coinbase transaction* comes from the raw bytes, by
+  Bitcoin's rule (one input that spends no earlier output), not from the
+  provider's label. A provider can't hide an input by calling it
+  "coinbase".
+- The weight, used for the fee rate, matches the raw transaction.
 
 **Doesn't prove** the input amounts: those are covered by the next check.
+The witness (signatures) isn't covered by the txid, so the weight check
+only shows that the weight matches the bytes the provider sent.
 
 ## Input amounts and fee
 
@@ -119,7 +136,10 @@ can't be hidden, added or reordered without failing this check.
   and hashes to its own txid.
 - The output that each input spends holds the amount and address shown.
   Each input gets its own ✓ or ✗.
+- The inputs cover the outputs: the fee isn't negative.
 - Fee = inputs − verified outputs, and it equals the fee shown.
+- A coinbase is skipped only once the contents check has confirmed it
+  from the raw transaction.
 
 It runs automatically when there are up to 25 earlier transactions to
 download. Above that, a button starts it.
@@ -131,12 +151,25 @@ the full *UTXO set*, which only full nodes keep.
 
 **Checks**
 
-- A Merkle proof leads from the txid to a block header.
+- A Merkle proof leads from the txid to a block header, without pairing
+  a hash with a copy of itself on the wrong side (a leaf that isn't
+  there).
 - That header passes the [proof-of-work checks](#block-proof-of-work).
 - The proof is for the block shown.
+- Every provider has that block at that height. Each is asked
+  separately. A provider with a different block there makes the check
+  **fail**. If no second provider can confirm it yet, for example
+  because the block is seconds old, the check is grey.
 
-**Doesn't prove:** the same limits as the block check. Unconfirmed
-transactions show "nothing to prove" until they are in a block.
+The last point matters because a block's own proof of work can be cheap
+(see [block proof of work](#block-proof-of-work)): one provider could
+invent a block holding an invented payment. It can't make independent
+providers report that block.
+
+**Doesn't prove:** the same limits as the block check. With only one
+provider (for example your own node, used exclusively) its word decides
+which block is at that height. Unconfirmed transactions show "nothing to
+prove" until they are in a block.
 
 ## Chain tip agreement
 
@@ -149,6 +182,17 @@ transactions show "nothing to prove" until they are in a block.
   mainnet limits.
 - The tips are compared. The check tells "one block behind on the same
   chain" apart from "a different chain".
+- A provider that is ahead must have built on the others' tips with the
+  difficulty Bitcoin requires next. One block ahead, its own header must
+  point to the other tip. Within a difficulty period it must have the
+  same difficulty. At the start of a new one it must have the
+  [retarget](#block-difficulty) computed from the other provider's
+  headers. A tip that is ahead with any other difficulty was mined at a
+  made-up difficulty, which can be cheap, and **fails** like a fake
+  header.
+- When the newer blocks can't be checked this way (more than one block
+  ahead across a difficulty change), the check is grey ("can't be checked
+  yet"), never a pass.
 
 A provider whose tip header fails, or isn't a header at all, has sent
 data that isn't a real block. The check then **fails** (red ✗), naming
@@ -170,7 +214,12 @@ compare.
 **Checks**
 
 - Adds up the chain's total proof of work exactly, from one
-  proof-of-work-checked header per difficulty period.
+  proof-of-work-checked header per difficulty period, starting at the
+  genesis block.
+- Every period's difficulty is the one the
+  [difficulty history](#difficulty-history) traced back to the genesis
+  block. A header's own proof of work can't vouch for its period's
+  difficulty: it can be cheap.
 - The tip's difficulty matches its period's first block.
 - The result is shown in the same hexadecimal form as Bitcoin Core's
   `chainwork`, so you can compare it with your own node

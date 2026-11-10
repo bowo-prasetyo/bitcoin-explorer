@@ -400,12 +400,16 @@ export default {
       };
 
       progress('Adding up the work')(0, chainWorkHeaderCount(tip.height));
-      const work = await verifyChainWork(tip, { onProgress: progress('Adding up the work') });
+      // The total is built on the difficulty history, which it runs and
+      // returns; it is run here only when the total stopped before it.
+      const work = await verifyChainWork(tip, {
+        onProgress: progress('Adding up the work'),
+        onHistoryProgress: progress('Tracing the difficulty history')
+      });
       if (!current()) return;
       this.chainWorkCheck = work;
 
-      // Period starts are now cached; this mostly fetches period ends.
-      const history = await verifyDifficultyHistory(tip.height, {
+      const history = work.history ?? await verifyDifficultyHistory(tip.height, {
         tipHeight: tip.height,
         onProgress: progress('Tracing the difficulty history')
       });

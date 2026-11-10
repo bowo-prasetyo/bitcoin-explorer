@@ -178,8 +178,10 @@ address's coins are still unspent. The full list is in
    while the page is open.
 4. Check the **Transaction inclusion** badge. A green ✓ ("Inclusion in
    block N verified") means your browser proved that this exact
-   transaction is inside that block, and that the block has valid proof
-   of work.
+   transaction is inside that block, that the block has valid proof of
+   work, and that every data provider has that block at that height. If
+   only one provider could confirm the block so far, the badge is grey:
+   wait a minute and reload.
 
 ### 4.2 Check a transaction's amounts and fee
 
@@ -199,10 +201,10 @@ On a transaction page:
 
 On a block page:
 
-- **Proof of work.** The header is real, it was hard to produce, and the
-  details shown match it.
+- **Proof of work.** The header is real, it carries the work its
+  difficulty demands, and the details shown match it.
 - **Difficulty.** The block's difficulty follows Bitcoin's rules for its
-  height. If the earlier headers are already saved in your browser, the
+  height, so the proof of work above was as hard as Bitcoin requires. If the earlier headers are already saved in your browser, the
   difficulty is also traced all the way back to the first block. If not,
   click **Trace back to the genesis block (N headers)**.
 - **Transaction list.** Shown above each page of 25 transactions. It
@@ -242,8 +244,9 @@ page show the result:
 |---|---|
 | *All N providers agree on the tip* | Everyone reports the same newest block. |
 | *Providers agree; one is catching up* | One is a block or so behind on the same chain. This is normal. |
+| *A provider is ahead, but its newest block can't be checked yet* | One is more than a block ahead across a difficulty change, so its newest block can't be checked against the others yet. Usually clears with the next block. |
 | *Providers DISAGREE on the chain* | They report different chains. Be careful until this clears. |
-| *mempool.space sent an invalid chain tip* (or *N providers sent invalid chain tips*) | That provider named a newest block whose header fails proof of work: it is broken, or showing you a fake chain. Assay stops using it for lookups (see below). |
+| *mempool.space sent an invalid chain tip* (or *N providers sent invalid chain tips*) | That provider named a newest block whose header fails proof of work, or that is ahead of the others with a difficulty Bitcoin doesn't allow there: it is broken, or showing you a fake chain. Assay stops using it for lookups (see below). |
 
 **A provider that sends an invalid tip is not used for lookups.** The
 **Providers** page marks it *not used*, with the reason. Your lookups go
