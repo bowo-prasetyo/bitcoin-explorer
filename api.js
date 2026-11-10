@@ -36,6 +36,8 @@ const DEFAULT_PROVIDERS = [
 //   'unavailable' - no provider could be reached or answered.
 //   'distrusted'  - every provider is left out of lookups for having
 //                   sent an invalid chain tip (distrust.js).
+//   'offline'     - the device has no network connection, so nothing was
+//                   sent (and no provider is marked as failing).
 export class ApiError extends Error {
 
   constructor(kind, message, details = []) {
@@ -250,6 +252,15 @@ export function trustProviderAgain(base) {
   saveDistrust(next);
 }
 
+// No connection at all: say so, without trying (and failing) every
+// provider, which would wreck their health scores for when it comes back.
+// navigator.onLine is only trusted when it says "offline".
+function assertOnline() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new ApiError('offline', "You're offline.");
+  }
+}
+
 // Requests made to providers this session, for the Providers page.
 const networkStats = { requests: 0, since: Date.now() };
 
@@ -286,6 +297,8 @@ function isDefinitiveAnswer(status) {
 // =====================================================
 
 async function apiFetch(path) {
+
+  assertOnline();
 
   const errors = [];
   const nodes = lookupNodes(getRankedNodes(), distrust);
@@ -467,6 +480,8 @@ export async function tryGetBlock(hash) {
 // =====================================================
 
 async function fetchTextFrom(base, path, timeoutMs = REQUEST_TIMEOUT) {
+  assertOnline();
+
   const start = performance.now();
 
   let r;

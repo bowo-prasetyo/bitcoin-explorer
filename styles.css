@@ -837,3 +837,13 @@ footer {
 .history-chart p {
   margin: 0 0 8px;
 }
+
+/* ---------- offline ---------- */
+
+.offline-banner {
+  padding: 8px 20px;
+  background: #2a2412;
+  border-bottom: 1px solid #ffb300;
+  color: #ffe082;
+  font-size: 0.9em;
+}
