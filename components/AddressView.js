@@ -31,7 +31,10 @@ export default {
 
       <h2>Address</h2>
 
-      <div class="hash">{{ address }}</div>
+      <div class="hash-row">
+        <span class="hash">{{ address }}</span>
+        <copy-button v-if="!invalidReason" :text="address" what="address"></copy-button>
+      </div>
 
       <div v-if="invalidReason" class="notice notice-error" style="margin-top:10px">
         This isn't a valid Bitcoin mainnet address. {{ invalidReason }}

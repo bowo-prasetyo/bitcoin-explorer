@@ -52,15 +52,20 @@ export default {
 
       <h2>Block <span v-if="block">{{ formatNumber(block.height) }}</span></h2>
 
-      <div class="hash">{{ hash }}</div>
+      <div class="hash-row">
+        <span class="hash">{{ hash }}</span>
+        <copy-button :text="hash" what="block hash"></copy-button>
+      </div>
 
       <data-status :status="status" what="block"></data-status>
+
+      <verify-summary v-if="block" :results="summaryResults"></verify-summary>
 
       <dl v-if="block" class="facts">
         <dt>Mined</dt>
         <dd>{{ formatTime(block.timestamp) }} <span class="muted">({{ ago(block.timestamp) }})</span></dd>
 
-        <dt>Confirmations</dt>
+        <dt><glossary-term term="confirmations">Confirmations</glossary-term></dt>
         <dd>{{ confirmations === null ? '…' : formatNumber(confirmations) }}</dd>
 
         <dt>Transactions</dt>
@@ -69,7 +74,7 @@ export default {
         <dt>Size</dt>
         <dd>{{ formatNumber(block.size) }} bytes</dd>
 
-        <dt>Weight</dt>
+        <dt><glossary-term term="vb-wu">Weight</glossary-term></dt>
         <dd>{{ formatNumber(block.weight) }} WU</dd>
       </dl>
 
@@ -174,6 +179,25 @@ export default {
   },
 
   computed: {
+    // Every check on the page, for <verify-summary>. The transaction list
+    // is checked in the second card, once its page of transactions loads.
+    summaryResults() {
+      const results = [this.headerCheck, this.difficultyCheck];
+
+      if (this.historyCheck) {
+        results.push(this.historyCheck);
+      } else if (this.historyRunning) {
+        results.push(null);
+      } else if (this.historyOffer) {
+        results.push({ state: 'na', needsConfirm: true });
+      }
+
+      const txsFailed = !this.txs.length && !!this.txsStatus.error;
+      results.push(this.txListCheck ?? (txsFailed ? { state: 'error' } : null));
+
+      return results;
+    },
+
     // Derived from cached data too, so it's right on a cache-first render.
     confirmations() {
       if (!this.block || this.tipHeight === null) {

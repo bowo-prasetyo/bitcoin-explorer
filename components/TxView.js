@@ -1,4 +1,4 @@
-import { getTx } from '../api.js';
+import { getTx, getTipHeight } from '../api.js';
 
 import {
   createSmartRefresher,
@@ -34,9 +34,14 @@ export default {
 
       <h2>Transaction</h2>
 
-      <div class="hash">{{ txid }}</div>
+      <div class="hash-row">
+        <span class="hash">{{ txid }}</span>
+        <copy-button :text="txid" what="transaction id"></copy-button>
+      </div>
 
       <data-status :status="status" what="transaction"></data-status>
+
+      <verify-summary v-if="tx" :results="[contentsCheck, inputsCheck, inclusionCheck]"></verify-summary>
 
       <dl v-if="tx" class="facts">
 
@@ -54,6 +59,15 @@ export default {
         </dd>
 
         <template v-if="tx.status.confirmed">
+          <dt><glossary-term term="confirmations">Confirmations</glossary-term></dt>
+          <dd>
+            <template v-if="confirmations !== null">
+              <span class="strong">{{ formatNumber(confirmations) }}</span>
+              <span class="muted" v-if="confirmations < 6"> (many wait for 6)</span>
+            </template>
+            <template v-else>…</template>
+          </dd>
+
           <dt>Time</dt>
           <dd>
             {{ formatTime(tx.status.block_time) }}
@@ -71,11 +85,11 @@ export default {
             <span class="muted">({{ formatSats(tx.fee) }})</span>
           </dd>
 
-          <dt>Fee rate</dt>
+          <dt><glossary-term term="fee-rate">Fee rate</glossary-term></dt>
           <dd>{{ formatFeeRate(tx.fee, tx.weight) }}</dd>
         </template>
 
-        <dt>Size</dt>
+        <dt><glossary-term term="vb-wu">Size</glossary-term></dt>
         <dd>
           {{ formatNumber(vsizeFromWeight(tx.weight)) }} vB
           <span class="muted">({{ formatNumber(tx.weight) }} WU)</span>
@@ -112,7 +126,8 @@ export default {
 
           <div class="io-main">
             <div v-if="vin.is_coinbase">
-              <span class="tag">coinbase</span> newly minted coins and fees
+              <glossary-term term="coinbase-transaction"><span class="tag">coinbase</span></glossary-term>
+              newly minted coins and fees
             </div>
 
             <router-link
@@ -189,6 +204,7 @@ export default {
     return {
       txid: '',
       tx: null,
+      tipHeight: null,
       status: createStatus(),
 
       contentsCheck: null,
@@ -210,6 +226,15 @@ export default {
 
     totalOut() {
       return sumValues(this.tx?.vout);
+    },
+
+    // The block counts as the first. A tip cached before the block arrived
+    // can lag behind it, so never show fewer than 1.
+    confirmations() {
+      if (!this.tx?.status?.confirmed || this.tipHeight === null) {
+        return null;
+      }
+      return Math.max(1, this.tipHeight - this.tx.status.block_height + 1);
     }
   },
 
@@ -290,10 +315,22 @@ export default {
       shouldStop: () => this.tx?.status?.confirmed === true
     });
 
+    // Confirmations keep counting after the transaction itself stops
+    // changing. The tip only moves with a new block.
+    this.tipRefresher = createSmartRefresher({
+      cacheKey: 'tip-height',
+      cacheTTL: CACHE_TTL.latestBlock,
+      live: 'replace',
+      fetchFn: getTipHeight,
+      onUpdate: height => { this.tipHeight = height; }
+    });
+
     this.refresher.start();
+    this.tipRefresher.start();
   },
 
   unmounted() {
     this.refresher?.stop();
+    this.tipRefresher?.stop();
   }
 };

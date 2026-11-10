@@ -44,3 +44,17 @@ test('helpful reasons for invalid input', () => {
   // 0 and O are not base58
   assert.equal(classifyQuery('1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf0a').type, 'invalid');
 });
+
+test('bitcoin: payment links open the address', () => {
+  const a = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+  assert.deepEqual(classifyQuery('bitcoin:' + a), { type: 'address', address: a });
+  assert.deepEqual(classifyQuery(' BITCOIN:' + a.toUpperCase() + '?amount=0.1&label=Shop '), { type: 'address', address: a });
+  assert.deepEqual(
+    classifyQuery('bitcoin:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa?amount=1'),
+    { type: 'address', address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' }
+  );
+  assert.match(classifyQuery('bitcoin:tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx').reason, /testnet/);
+  assert.match(classifyQuery('bitcoin:?lightning=lnbc1').reason, /no valid address/);
+  assert.match(classifyQuery('bitcoin:870000').reason, /no valid address/);
+  assert.match(classifyQuery('bitcoin:%E0%A4%A').reason, /no valid address/);
+});

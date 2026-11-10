@@ -39,28 +39,35 @@ export default {
     return { ago, notFound, absoluteTime };
   },
 
+  // Only the notices sit in the live region: they change when something
+  // goes wrong or recovers. The "Updated … ago" line changes every few
+  // seconds and would keep interrupting a screen reader.
   template: `
-  <div class="data-status" role="status" aria-live="polite">
+  <div class="data-status">
 
-    <div v-if="status.error && notFound" class="notice notice-error">
-      This {{ what }} was not found.
-      <span class="muted">{{ status.error.message }}</span>
+    <div role="status">
+
+      <div v-if="status.error && notFound" class="notice notice-error">
+        This {{ what }} was not found.
+        <span class="muted">{{ status.error.message }}</span>
+      </div>
+
+      <div v-else-if="status.error && !status.updatedAt" class="notice notice-error">
+        Couldn't reach any Bitcoin data provider. Retrying automatically.
+      </div>
+
+      <div v-else-if="status.error" class="notice notice-warn">
+        Couldn't refresh. Showing data from
+        <span :title="absoluteTime" aria-hidden="true">{{ ago }}</span><span class="visually-hidden">{{ absoluteTime }}</span>.
+      </div>
+
     </div>
 
-    <div v-else-if="status.error && !status.updatedAt" class="notice notice-error">
-      Couldn't reach any Bitcoin data provider. Retrying automatically.
-    </div>
-
-    <div v-else-if="status.error" class="notice notice-warn">
-      Couldn't refresh. Showing data from
-      <span :title="absoluteTime">{{ ago }}</span>.
-    </div>
-
-    <div v-else-if="status.loading" class="muted">
+    <div v-if="!status.error && status.loading" class="muted">
       Loading…
     </div>
 
-    <div v-else-if="status.updatedAt" class="muted small">
+    <div v-else-if="!status.error && status.updatedAt" class="muted small">
       Updated <span :title="absoluteTime">{{ ago }}</span>
       <span v-if="status.cached"> (cached)</span>
       <span v-if="status.refreshing"> · refreshing…</span>
