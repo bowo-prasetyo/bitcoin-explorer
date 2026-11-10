@@ -33,7 +33,7 @@ export default {
         No samples recorded yet.
       </div>
 
-      <canvas id="mempoolCountChart"></canvas>
+      <canvas id="mempoolCountChart" role="img" :aria-label="summary"></canvas>
 
     </div>
 
@@ -45,6 +45,20 @@ export default {
       history: [],
       status: createStatus()
     };
+  },
+
+  computed: {
+    // The chart's text alternative.
+    summary() {
+      const n = this.history.length;
+      if (!n) return 'Mempool transaction count: no samples yet.';
+      const last = this.history[n - 1];
+      const counts = this.history.map(p => p.count);
+      const fmt = x => x.toLocaleString('en-US');
+      return `Mempool transaction count, ${n} samples from ${this.history[0].timestamp} ` +
+        `to ${last.timestamp}: latest ${fmt(last.count)}, lowest ${fmt(Math.min(...counts))}, ` +
+        `highest ${fmt(Math.max(...counts))}.`;
+    }
   },
 
   methods: {
@@ -94,12 +108,20 @@ export default {
             labels: [],
             datasets: [{
               label: 'Pending transactions',
-              data: []
+              data: [],
+              borderColor: '#4fc3f7',
+              backgroundColor: '#4fc3f7',
+              pointRadius: 2
             }]
           },
           options: {
             responsive: true,
-            animation: false
+            animation: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { title: { display: true, text: 'Time sampled (your clock)' } },
+              y: { title: { display: true, text: 'Pending transactions' } }
+            }
           }
         })
       );

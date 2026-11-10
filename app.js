@@ -86,8 +86,19 @@ function showFatalError(err) {
   document.body.replaceChildren(box);
 }
 
+// Chart.js defaults to #666 text, about 3:1 on these cards. Readable
+// text and quiet grid lines for every chart.
+function styleCharts() {
+  if (typeof Chart === 'undefined') return;
+  Chart.defaults.color = '#bdbdbd';
+  Chart.defaults.borderColor = '#333';
+  Chart.defaults.font.size = 13;
+}
+
 async function bootstrap() {
   try {
+    styleCharts();
+
     await initDB();
 
     liveFeed.start({ getCandidates: () => liveCandidates(getProviderSettings()) });

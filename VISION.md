@@ -121,6 +121,9 @@ Since phase 3, work ships as individual features:
   also what screen readers announce.
 - Jargon explained in place, from an in-app glossary kept identical to
   `docs/glossary.md`.
+- Polish: visible keyboard focus, 44 px touch targets, phone-friendly
+  tables, readable charts with a table view, a title per tab, local time
+  next to UTC, and a two-column home page.
 
 ### Next ideas
 

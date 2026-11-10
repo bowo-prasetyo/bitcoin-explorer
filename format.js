@@ -111,3 +111,42 @@ export function addressNetValue(tx, address) {
 export function sumValues(items, pick = x => x.value) {
   return (items || []).reduce((acc, x) => acc + (pick(x) || 0), 0);
 }
+
+// The time in the viewer's own time zone, e.g. "3 Jan 2009, 19:15 CET",
+// or null when that zone shows the same clock time as UTC (formatTime
+// already says it). `timeZone` is for tests; omitted, it is the viewer's.
+export function formatLocalTime(unixSeconds, timeZone) {
+  if (!unixSeconds) {
+    return null;
+  }
+
+  const date = new Date(unixSeconds * 1000);
+  const clock = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+
+  const local = new Intl.DateTimeFormat('en-GB', { ...clock, timeZone }).format(date);
+  const utc = new Intl.DateTimeFormat('en-GB', { ...clock, timeZone: 'UTC' }).format(date);
+
+  if (local === utc) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-GB', { ...clock, timeZone, timeZoneName: 'short' }).format(date);
+}
+
+// Esplora's mempool fee_histogram as chart bars. Each entry is
+// [feerate, vsize]: the vsize of transactions paying at least that rate and
+// less than the previous entry's (the first has no upper bound).
+// -> [{ label: '20–50', from: 20, to: 50, vsize }], highest rate first.
+export function histogramBuckets(histogram) {
+  return (histogram || []).map(([rate, vsize], i, all) => {
+    const from = +rate.toFixed(1);
+    const to = i === 0 ? null : +all[i - 1][0].toFixed(1);
+
+    return {
+      label: to === null ? `${from}+` : `${from}–${to}`,
+      from,
+      to,
+      vsize
+    };
+  });
+}

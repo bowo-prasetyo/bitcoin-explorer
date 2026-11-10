@@ -17,7 +17,8 @@ import {
   formatAgo,
   formatBtc,
   formatNumber,
-  formatTime
+  formatTime,
+  formatLocalTime
 } from '../format.js';
 
 import { now } from './DataStatus.js';
@@ -93,7 +94,7 @@ export default {
       <data-status :status="txsStatus" what="transaction history"></data-status>
 
       <div v-if="txs.length" class="table-scroll">
-        <table>
+        <table class="stack-sm">
           <thead>
             <tr>
               <th>When</th>
@@ -103,16 +104,16 @@ export default {
           </thead>
           <tbody>
             <tr v-for="tx in txs" :key="tx.txid">
-              <td>
-                <span v-if="tx.status.confirmed" :title="formatTime(tx.status.block_time)">
+              <td data-label="When">
+                <span v-if="tx.status.confirmed" :title="whenTitle(tx.status.block_time)">
                   {{ ago(tx.status.block_time) }}
                 </span>
                 <span v-else class="tag tag-pending">pending</span>
               </td>
-              <td class="hash">
+              <td class="hash full">
                 <router-link :to="'/tx/' + tx.txid">{{ tx.txid }}</router-link>
               </td>
-              <td class="num" :class="net(tx) < 0 ? 'neg' : 'pos'">
+              <td class="num" data-label="Change" :class="net(tx) < 0 ? 'neg' : 'pos'">
                 {{ formatBtc(net(tx), { sign: true }) }}
               </td>
             </tr>
@@ -191,6 +192,12 @@ export default {
 
     ago(unixSeconds) {
       return formatAgo(unixSeconds * 1000, now.value);
+    },
+
+    // Hover text: UTC, plus the viewer's own time when it differs.
+    whenTitle(unixSeconds) {
+      const local = formatLocalTime(unixSeconds);
+      return formatTime(unixSeconds) + (local ? ` (${local} your time)` : '');
     },
 
     net(tx) {

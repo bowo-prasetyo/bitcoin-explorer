@@ -1,8 +1,25 @@
+/* ---------- colours ---------- */
+
+:root {
+  --bg: #111;
+  --surface: #1c1c1c;
+  --surface-2: #262626;
+  --line: #3a3a3a;
+  --text: #eee;
+  --muted: #9a9a9a;
+  --link: #4fc3f7;          /* 8.6:1 on cards */
+  --link-hover: #8fdcff;
+  --focus: #ffb300;         /* amber: stands out from every state colour */
+  --primary: #4fc3f7;
+  --primary-text: #0b1a22;
+  color-scheme: dark;
+}
+
 body {
   font-family: Arial, sans-serif;
   margin: 0;
-  background: #111;
-  color: #eee;
+  background: var(--bg);
+  color: var(--text);
 }
 
 header {
@@ -11,11 +28,6 @@ header {
   display: flex;
   gap: 12px;
   align-items: center;
-}
-
-header a {
-  color: #4fc3f7;
-  text-decoration: none;
 }
 
 header .brand {
@@ -46,7 +58,7 @@ header .brand img {
 }
 
 .card {
-  background: #1c1c1c;
+  background: var(--surface);
   padding: 16px;
   border-radius: 8px;
   margin-bottom: 16px;
@@ -57,15 +69,57 @@ input {
   width: 100%;
   padding: 10px;
   border-radius: 6px;
-  border: none;
+  border: 1px solid #555;
   margin-bottom: 10px;
 }
 
+/* ---------- buttons ---------- */
+
+/* Secondary by default; .primary marks the one main action of a form. */
 button {
   padding: 10px 16px;
-  border: none;
+  border: 1px solid var(--line);
   border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
   cursor: pointer;
+}
+
+/* :where() keeps hover weaker than classes such as .term and .link-button,
+   which look like text and must not grow a background. */
+button:where(:hover:not(:disabled)) {
+  background: #303030;
+  border-color: #555;
+}
+
+button.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+  font-weight: bold;
+}
+
+button.primary:where(:hover:not(:disabled)) {
+  background: var(--link-hover);
+  border-color: var(--link-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- keyboard focus ---------- */
+
+/* Only for keyboard use (not mouse clicks), and the same everywhere. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+input:focus-visible {
+  outline-offset: 0;
 }
 
 .hash {
@@ -73,31 +127,43 @@ button {
   font-family: monospace;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-}
+/* ---------- links ---------- */
 
-a {
-  color: #00e5ff;            /* neon cyan for dark UI */
+/* One colour for every link. Visited links look the same: in an explorer
+   nearly every txid would otherwise turn a second colour. */
+a,
+a:visited {
+  color: var(--link);
   text-decoration: none;
-  font-family: inherit;
-  transition: all 0.15s ease;
 }
 
 a:hover {
-  color: #66faff;
+  color: var(--link-hover);
   text-decoration: underline;
-  text-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
 }
 
-a:visited {
-  color: #00bcd4;
-}
+/* ---------- touch screens ---------- */
 
-a:active {
-  color: #ffffff;
+/* Fingers need about 44 px; text links in sentences are exempt. */
+@media (pointer: coarse) {
+  header > a,
+  footer a,
+  .pager a,
+  .term-more {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  button {
+    min-height: 44px;
+  }
+
+  .copy-button,
+  .link-button {
+    min-height: 32px;
+    min-width: 44px;
+  }
 }
 
 /* ---------- data status ---------- */
@@ -277,7 +343,7 @@ td.hash {
   padding: 0;
   border: none;
   background: none;
-  color: #00e5ff;
+  color: var(--link);
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
@@ -658,4 +724,102 @@ footer {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* ---------- tables on phones ---------- */
+
+/* .stack-sm tables turn each row into a small card below 560 px, each
+   cell labelled from its data-label, so no column is cut off. */
+@media (max-width: 560px) {
+  table.stack-sm thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  table.stack-sm tr {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #2a2a2a;
+  }
+
+  table.stack-sm td {
+    display: contents;
+  }
+
+  table.stack-sm td::before {
+    content: attr(data-label);
+    color: var(--muted);
+  }
+
+  /* A cell with no label (e.g. the txid) spans the row. */
+  table.stack-sm td.full::before {
+    display: none;
+  }
+
+  /* Grid items stretch by default; tags and links should keep their size. */
+  table.stack-sm td > * {
+    min-width: 0;
+    justify-self: start;
+  }
+
+  table.stack-sm td.full > * {
+    grid-column: 1 / -1;
+  }
+
+  table.stack-sm td.num,
+  table.stack-sm td.hash {
+    text-align: left;
+    white-space: normal;
+    max-width: none;
+    width: auto;
+  }
+}
+
+/* ---------- home page ---------- */
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.home-grid > .card {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.home-grid > .span-all {
+  grid-column: 1 / -1;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin: 12px 0 0;
+}
+
+/* ---------- local time ---------- */
+
+.local-time {
+  display: block;
+}
+
+/* ---------- charts ---------- */
+
+.chart-table {
+  margin-top: 8px;
+}
+
+.chart-table summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.85em;
 }

@@ -18,7 +18,9 @@ import {
   formatBtc,
   formatNumber,
   formatTime,
-  formatVsize
+  formatVsize,
+  formatLocalTime,
+  histogramBuckets
 } from '../format.js';
 
 import { now } from './DataStatus.js';
@@ -57,29 +59,22 @@ function etaLabel(blocks) {
 export default {
 
   template: `
-<div class="container">
+<div class="container home-grid">
 
   <!-- SEARCH -->
-  <div class="card">
+  <div class="card span-all">
 
     <h2>A Bitcoin explorer that checks before it shows.</h2>
 
     <search-box></search-box>
 
-  </div>
+    <p class="examples small">
+      <span class="muted">Try:</span>
+      <router-link to="/block/000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f">the genesis block</router-link>
+      <router-link to="/tx/4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b">its transaction</router-link>
+      <router-link to="/address/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">Satoshi Nakamoto's address</router-link>
+    </p>
 
-  <!-- SATOSHI NAKAMOTO LEGACY -->
-  <div class="card">
-    <h2>Legacy of Satoshi Nakamoto</h2>
-    <div class="hash">
-      Genesis address: <a href="#/address/1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</a>
-    </div>
-    <div class="hash">
-      Genesis transaction: <a href="#/tx/4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b">4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b</a>
-    </div>
-    <div class="hash">
-      Genesis block: <a href="#/block/000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f">000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f</a>
-    </div>
   </div>
 
   <!-- BLOCKCHAIN TIP -->
@@ -100,10 +95,19 @@ export default {
       </dd>
 
       <dt>Mined</dt>
-      <dd>{{ formatTime(latest.timestamp) }} <span class="muted">({{ ago(latest.timestamp) }})</span></dd>
+      <dd>
+        {{ formatTime(latest.timestamp) }} <span class="muted">({{ ago(latest.timestamp) }})</span>
+        <span v-if="formatLocalTime(latest.timestamp)" class="local-time muted small">{{ formatLocalTime(latest.timestamp) }} your time</span>
+      </dd>
     </dl>
 
-    <verify-badge v-if="latest.id" :result="tipCheck"></verify-badge>
+    <verify-badge v-if="latest.id" :result="tipCheck">
+      <button
+        v-if="tipCheck && tipCheck.state !== 'ok'"
+        class="verify-action"
+        @click="recheckTip"
+      >Check again</button>
+    </verify-badge>
 
   </div>
 
@@ -124,7 +128,7 @@ export default {
         ({{ Math.ceil(headerCount * 80 / 1024) }} KB)
         the first time. After that, only new ones.
       </p>
-      <button @click="enableChainWork">Add up the total work</button>
+      <button class="primary" @click="enableChainWork">Add up the total work</button>
     </template>
 
     <template v-else>
@@ -247,18 +251,42 @@ export default {
 
     <data-status :status="mempoolStatus" what="mempool"></data-status>
 
-    <provider-note v-if="mempool.fee_histogram?.length">
+    <provider-note v-if="buckets.length">
       built from the provider's mempool.
     </provider-note>
 
     <div
-      v-if="mempool.count !== undefined && !mempool.fee_histogram?.length"
+      v-if="mempool.count !== undefined && !buckets.length"
       class="empty"
     >
       The mempool has no fee histogram data right now.
     </div>
 
-    <canvas id="histogramChart"></canvas>
+    <p v-if="buckets.length" class="muted small">
+      How much is waiting at each fee rate. Higher-paying transactions are
+      mined first.
+    </p>
+
+    <canvas
+      id="histogramChart"
+      role="img"
+      :aria-label="histogramSummary"
+    ></canvas>
+
+    <details v-if="buckets.length" class="chart-table">
+      <summary>Show as a table</summary>
+      <table>
+        <thead>
+          <tr><th>Fee rate (sat/vB)</th><th class="num">Waiting</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="b in buckets" :key="b.label">
+            <td>{{ b.label }}</td>
+            <td class="num">{{ formatVsize(b.vsize) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </details>
 
   </div>
 
@@ -289,6 +317,22 @@ export default {
   },
 
   computed: {
+    buckets() {
+      return histogramBuckets(this.mempool?.fee_histogram);
+    },
+
+    // The chart's text alternative: the three biggest bands.
+    histogramSummary() {
+      if (!this.buckets.length) {
+        return 'Fee histogram: no data yet.';
+      }
+      const top = [...this.buckets]
+        .sort((a, b) => b.vsize - a.vsize)
+        .slice(0, 3)
+        .map(b => `${formatVsize(b.vsize)} at ${b.label} sat/vB`);
+      return `Fee histogram. Most waiting: ${top.join('; ')}. Use "Show as a table" for every band.`;
+    },
+
     headerCount() {
       return this.latest.height === undefined ? 0 : historyHeaderCount(this.latest.height);
     },
@@ -306,6 +350,7 @@ export default {
     formatNumber,
     formatTime,
     formatVsize,
+    formatLocalTime,
 
     ago(unixSeconds) {
       return formatAgo(unixSeconds * 1000, now.value);
@@ -330,6 +375,12 @@ export default {
       this.tipCheckedFor = this.latest.id;
       this.tipCheck = null;
       this.tipCheck = await verifyTip();
+    },
+
+    // The tip check failed or couldn't run: ask every provider again.
+    recheckTip() {
+      this.tipCheckedFor = null;
+      this.checkTip();
     },
 
     enableChainWork() {
@@ -394,13 +445,30 @@ export default {
           data: {
             labels: [],
             datasets: [{
-              label: 'Queued vBytes',
-              data: []
+              label: 'Waiting',
+              data: [],
+              backgroundColor: '#4fc3f7'
             }]
           },
           options: {
             responsive: true,
-            animation: false
+            animation: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  title: items => `${items[0].label} sat/vB`,
+                  label: item => `${item.parsed.y.toFixed(2)} MvB waiting`
+                }
+              }
+            },
+            scales: {
+              x: { title: { display: true, text: 'Fee rate (sat/vB)' } },
+              y: {
+                title: { display: true, text: 'Waiting (MvB)' },
+                beginAtZero: true
+              }
+            }
           }
         })
       );
@@ -411,14 +479,11 @@ export default {
         return;
       }
 
-      const histogram = this.mempool?.fee_histogram || [];
+      // Highest rate on the right, like a fee slider.
+      const buckets = [...this.buckets].reverse();
 
-      this.histogramChart.data.labels =
-        histogram.map(h => h[0] + ' sat/vB');
-
-      this.histogramChart.data.datasets[0].data =
-        histogram.map(h => h[1]);
-
+      this.histogramChart.data.labels = buckets.map(b => b.label);
+      this.histogramChart.data.datasets[0].data = buckets.map(b => b.vsize / 1e6);
       this.histogramChart.update();
     }
   },

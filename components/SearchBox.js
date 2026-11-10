@@ -44,7 +44,7 @@ export default {
         @input="error = ''"
         @keydown.esc="clear"
       >
-      <button type="submit" :disabled="searching">
+      <button type="submit" class="primary" :disabled="searching">
         {{ searching ? 'Searching…' : 'Search' }}
       </button>
     </form>
