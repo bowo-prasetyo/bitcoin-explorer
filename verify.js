@@ -37,7 +37,7 @@ import {
   txidFromRaw
 } from './spv.js';
 
-import { compareTips } from './consensus.js';
+import { compareTips, checkTipHeaders } from './consensus.js';
 
 import { parentTxids, checkSpentOutputs } from './inputs.js';
 
@@ -768,21 +768,10 @@ export async function verifyTransactionInclusion(tx) {
 
 export async function verifyTip() {
   try {
-    const tips = await getTipFromEach();
-
-    // A tip only counts if its header carries valid proof of work.
-    for (const t of tips) {
-      if (!t.ok) continue;
-
-      try {
-        const pow = await verifyHeaderPoW(t.header, t.hash);
-        if (!pow.ok) {
-          Object.assign(t, { ok: false, error: 'tip header failed proof-of-work check' });
-        }
-      } catch {
-        Object.assign(t, { ok: false, error: 'invalid tip header' });
-      }
-    }
+    // A tip only counts if its header carries valid proof of work. One
+    // that fails is marked invalid: a provider sending a fake block is a
+    // failure, never just "unreachable".
+    const tips = await checkTipHeaders(await getTipFromEach());
 
     // For providers behind the leader, ask the leader what it has at their
     // height, to tell "behind on the same chain" from "a different chain".
@@ -802,7 +791,12 @@ export async function verifyTip() {
 
     const cmp = compareTips(tips, leaderHashes);
 
+    const invalidTitle = cmp.invalid.length === 1
+      ? `${cmp.invalid[0]} sent an invalid chain tip`
+      : `${cmp.invalid.length} providers sent invalid chain tips`;
+
     const titles = {
+      invalid: invalidTitle,
       agree: `All ${cmp.responded} providers agree on the tip`,
       behind: 'Providers agree; one is catching up',
       conflict: 'Providers DISAGREE on the chain',
@@ -813,6 +807,7 @@ export async function verifyTip() {
     };
 
     const state = {
+      invalid: 'fail',
       agree: 'ok',
       behind: 'ok',
       conflict: 'fail',
@@ -823,6 +818,14 @@ export async function verifyTip() {
     const short = h => `${h.slice(0, 8)}…${h.slice(-6)}`;
 
     const checks = tips.map(t => {
+      if (t.invalid) {
+        return {
+          label: `${t.name}: claimed block ${t.height.toLocaleString('en-US')} ` +
+            `(${short(t.hash)}), but ${t.error}`,
+          ok: false
+        };
+      }
+
       if (!t.ok) {
         return { label: `${t.name}: ${t.error}`, ok: false };
       }
@@ -849,10 +852,14 @@ export async function verifyTip() {
         hash: t.hash,
         error: t.error
       })),
-      note:
-        'Each tip header is checked for proof of work. Agreement between ' +
-        'independent providers makes it much harder for one of them to show ' +
-        'you a fake or stale chain.'
+      note: cmp.state === 'invalid'
+        ? 'A tip that fails proof of work is not a real block: the provider ' +
+          'is broken, or is showing you a fake chain. Treat data from it with ' +
+          'suspicion until this clears, and compare with another provider or ' +
+          'your own node.'
+        : 'Each tip header is checked for proof of work. Agreement between ' +
+          'independent providers makes it much harder for one of them to show ' +
+          'you a fake or stale chain.'
     };
   } catch (err) {
     return errorResult("Couldn't compare providers", err);

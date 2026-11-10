@@ -138,9 +138,17 @@ transactions show "nothing to prove" until they are in a block.
 
 - Every provider is asked for its newest block (the *chain tip*)
   separately.
-- Each tip's header passes the proof-of-work checks.
+- Each tip's header passes the proof-of-work checks: it hashes to the
+  tip the provider named, meets its own target, and that target is within
+  mainnet limits.
 - The tips are compared. The check tells "one block behind on the same
   chain" apart from "a different chain".
+
+A provider whose tip header fails, or isn't a header at all, has sent
+data that isn't a real block. The check then **fails** (red ✗), naming
+that provider, even if every other provider agrees. It is never counted
+as a provider that couldn't be reached: those make the check grey, as
+they prove nothing either way.
 
 **Doesn't prove** anything with a single provider: there is nothing to
 compare.
