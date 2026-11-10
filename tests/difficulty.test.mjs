@@ -133,3 +133,67 @@ test('first period must use the genesis difficulty', () => {
 test('missing headers throw instead of passing', () => {
   assert.throws(() => checkDifficulty({ height: 100000, bits: 0x1b04864c }, {}), /Missing header/);
 });
+
+// ---------------------------------------------------------------
+// checkHeaderChain: a run of consecutive headers (confirmations)
+// ---------------------------------------------------------------
+
+import { checkHeaderChain } from '../difficulty.js';
+
+// Synthetic headers 100..105: each points to the one before.
+const run = (from, to, bits = 0x1b04864c, extra = {}) => {
+  const out = {};
+  for (let h = from; h <= to; h++) {
+    out[h] = { hash: 'h' + h, previousBlockHash: 'h' + (h - 1), bits, timestamp: 1000 + h, powOk: true, ...extra[h] };
+  }
+  return out;
+};
+
+test('checkHeaderChain: linked headers with the same difficulty pass', () => {
+  assert.deepEqual(checkHeaderChain(run(100, 105), 100, 105),
+    { linked: true, powOk: true, difficultyOk: true, ok: true });
+});
+
+test('checkHeaderChain: a single header is a chain of one', () => {
+  assert.equal(checkHeaderChain(run(100, 100), 100, 100).ok, true);
+});
+
+test('checkHeaderChain: a header that points elsewhere breaks the link', () => {
+  const r = checkHeaderChain(run(100, 105, 0x1b04864c, { 103: { previousBlockHash: 'other' } }), 100, 105);
+  assert.equal(r.linked, false);
+  assert.equal(r.ok, false);
+});
+
+test('checkHeaderChain: a cheaper block inside a period fails the difficulty', () => {
+  const r = checkHeaderChain(run(100, 105, 0x1b04864c, { 104: { bits: 0x1d00ffff } }), 100, 105);
+  assert.equal(r.linked, true);
+  assert.equal(r.difficultyOk, false);
+});
+
+test('checkHeaderChain: a header without valid work fails', () => {
+  assert.equal(checkHeaderChain(run(100, 105, 0x1b04864c, { 102: { powOk: false } }), 100, 105).powOk, false);
+});
+
+test('checkHeaderChain: across a retarget, the new period must carry it', () => {
+  // Bitcoin Core's vector: 0x1d00ffff, period from 1261130161 to
+  // 1262152739, gives 0x1d00d86a at block 32,256.
+  const headers = run(32254, 32257, 0x1d00ffff, {
+    32255: { timestamp: 1262152739 },
+    32256: { bits: 0x1d00d86a, timestamp: 1262153464 },
+    32257: { bits: 0x1d00d86a }
+  });
+  const first = { 30240: { timestamp: 1261130161, powOk: true } };
+  assert.equal(checkHeaderChain(headers, 32254, 32257, first).ok, true);
+
+  const kept = { ...headers, 32256: { ...headers[32256], bits: 0x1d00ffff }, 32257: { ...headers[32257], bits: 0x1d00ffff } };
+  assert.equal(checkHeaderChain(kept, 32254, 32257, first).difficultyOk, false);
+
+  // Without the previous period's first header the retarget can't pass.
+  assert.equal(checkHeaderChain(headers, 32254, 32257).difficultyOk, false);
+});
+
+test('checkHeaderChain: a missing header throws', () => {
+  const h = run(100, 105);
+  delete h[103];
+  assert.throws(() => checkHeaderChain(h, 100, 105), /Missing header at height 103/);
+});

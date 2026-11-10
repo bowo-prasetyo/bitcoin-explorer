@@ -129,6 +129,31 @@ export function parseHeader(headerHex) {
   };
 }
 
+// The 80-byte header (hex) rebuilt from an Esplora block's JSON fields.
+// Hashing it and comparing with the block's id checks every field: a
+// provider can't change one without the hash changing too.
+export function headerFromBlockJson(b) {
+  const u32 = n => {
+    if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) {
+      throw new Error('Invalid header field');
+    }
+    return bytesToHex([n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff]);
+  };
+  const hash = h => {
+    if (!/^[0-9a-f]{64}$/i.test(h)) throw new Error('Invalid header hash');
+    return reverseHex(h.toLowerCase());
+  };
+
+  return (
+    u32(b.version) +
+    (b.previousblockhash ? hash(b.previousblockhash) : '00'.repeat(32)) +
+    hash(b.merkle_root) +
+    u32(b.timestamp) +
+    u32(b.bits) +
+    u32(b.nonce)
+  );
+}
+
 export async function blockHashFromHeader(headerHex) {
   return reverseHex(await doubleSHA256(headerHex));
 }

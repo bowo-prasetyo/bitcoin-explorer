@@ -23,6 +23,7 @@ import { now } from './DataStatus.js';
 import {
   verifyTransactionContents,
   verifyTransactionInclusion,
+  verifyConfirmations,
   verifyTransactionInputs
 } from '../verify.js';
 
@@ -42,7 +43,7 @@ export default {
 
       <data-status :status="status" what="transaction"></data-status>
 
-      <verify-summary v-if="tx" :results="[contentsCheck, inputsCheck, inclusionCheck]"></verify-summary>
+      <verify-summary v-if="tx" :results="[contentsCheck, inputsCheck, inclusionCheck, confirmationsCheck]"></verify-summary>
 
       <dl v-if="tx" class="facts">
 
@@ -109,6 +110,7 @@ export default {
           >Check all inputs ({{ formatNumber(inputsCheck.parentCount) }} downloads)</button>
         </verify-badge>
         <verify-badge :result="inclusionCheck"></verify-badge>
+        <verify-badge :result="confirmationsCheck"></verify-badge>
       </template>
 
     </div>
@@ -213,6 +215,7 @@ export default {
       contentsStarted: false,
       inputsCheck: null,
       inclusionCheck: null,
+      confirmationsCheck: null,
       inclusionStartedFor: null
     };
   },
@@ -288,7 +291,16 @@ export default {
       if (this.inclusionStartedFor !== key) {
         this.inclusionStartedFor = key;
         this.inclusionCheck = null;
+        this.confirmationsCheck = null;
         this.inclusionCheck = await verifyTransactionInclusion(tx);
+
+        // Blocks on top only mean something once the transaction is
+        // proved to be in this block.
+        this.confirmationsCheck = this.inclusionCheck.state === 'ok'
+          ? await verifyConfirmations(tx)
+          : this.inclusionCheck.state === 'na'
+            ? { ...this.inclusionCheck, title: 'Not in a block yet: no confirmations to check.' }
+            : { state: 'na', title: 'Confirmations are checked once inclusion is verified.', checks: [], facts: [] };
       }
     }
   },

@@ -29,6 +29,7 @@ import {
   getTipFromEach,
   getBlockHashFrom,
   getBlockHashFromEach,
+  getBlocksFrom,
   recordTipCheck
 } from './api.js';
 
@@ -39,6 +40,7 @@ import {
   parseTransaction,
   txidFromRaw,
   checkCoinbaseHeight,
+  headerFromBlockJson,
   BIP34_HEIGHT
 } from './spv.js';
 
@@ -53,6 +55,7 @@ import { ApiError } from './api.js';
 import {
   headersNeeded,
   checkDifficulty,
+  checkHeaderChain,
   checkDifficultyHistory,
   periodStart,
   RETARGET_INTERVAL,
@@ -1076,6 +1079,176 @@ export async function verifyTransactionInclusion(tx) {
 }
 
 // =====================================================
+// CONFIRMATIONS (the block's place under the tip)
+// =====================================================
+
+// Most confirmations checked header by header; beyond this the badge says
+// "at least". 144 blocks is about a day, and about 15 requests.
+export const CONFIRMATIONS_CHECK_LIMIT = 144;
+
+// Headers for heights from..to (inclusive), newest first in requests of
+// ~10 blocks (Esplora's /blocks/:height), each rebuilt from its JSON and
+// proof-of-work checked against its id. Resolves to { [height]: { hash,
+// pow } }. Throws when a height is missing.
+async function loadHeaderRange(from, to, base) {
+  const out = {};
+  let next = to;
+
+  while (next >= from) {
+    const blocks = await getBlocksFrom(next, base);
+    let lowest = Infinity;
+
+    for (const b of Array.isArray(blocks) ? blocks : []) {
+      if (!Number.isInteger(b?.height) || b.height < from || b.height > next) continue;
+      out[b.height] = { hash: String(b.id).toLowerCase(), pow: await verifyHeaderPoW(headerFromBlockJson(b), String(b.id)) };
+      lowest = Math.min(lowest, b.height);
+    }
+
+    if (lowest === Infinity || !out[next]) {
+      throw new Error(`The provider didn't return block ${next.toLocaleString('en-US')}`);
+    }
+
+    next = lowest - 1;
+  }
+
+  return out;
+}
+
+// How many blocks are built on the transaction's block, proved header by
+// header: from the block up to the tip the providers agree on, each header
+// must point to the one before, carry valid proof of work, and have the
+// difficulty Bitcoin requires (the same within a period, the retarget at a
+// period start). Deeper than `limit`, the walk stops at block + limit - 1,
+// which every provider must have at that height: "at least `limit`".
+export async function verifyConfirmations(tx, { limit = CONFIRMATIONS_CHECK_LIMIT } = {}) {
+  if (!tx.status?.confirmed) {
+    return result('na', 'Not in a block yet: no confirmations to check.');
+  }
+
+  try {
+    const tip = await verifyTip();
+    const cmp = tip.comparison;
+    const chainState = cmp?.state === 'invalid' ? cmp.chainState : cmp?.state;
+
+    if (!['agree', 'behind', 'single'].includes(chainState)) {
+      return result('error', "Providers don't agree on the newest block yet, so confirmations can't be checked", [], {
+        note: tip.title
+      });
+    }
+
+    const b = tx.status.block_height;
+    const blockHash = tx.status.block_hash;
+    const fmt = n => n.toLocaleString('en-US');
+
+    if (cmp.height < b) {
+      return result('error', `The providers' newest block is below block ${fmt(b)}; check again shortly`);
+    }
+
+    const leader = tip.providers.find(p => p.ok && p.hash === cmp.hash);
+    const top = Math.min(cmp.height, b + limit - 1);
+    const deep = top < cmp.height;
+
+    const [{ pow: own }, above] = await Promise.all([
+      loadVerifiedHeader(blockHash, b),
+      top > b ? loadHeaderRange(b + 1, top, leader?.base) : {}
+    ]);
+
+    const loaded = { [b]: { hash: blockHash, pow: own }, ...above };
+    const asCheckable = ({ hash, pow }) => ({
+      hash,
+      bits: pow.header.bits,
+      timestamp: pow.header.timestamp,
+      previousBlockHash: pow.header.previousBlockHash,
+      powOk: pow.ok
+    });
+    const headers = Object.fromEntries(Object.entries(loaded).map(([h, x]) => [h, asCheckable(x)]));
+
+    // A retarget inside the run needs its previous period's first header.
+    const periodFirst = {};
+    for (let h = b + 1; h <= top; h++) {
+      const firstHeight = h - RETARGET_INTERVAL;
+      if (h % RETARGET_INTERVAL === 0 && !headers[firstHeight]) {
+        const first = (await loadHeaderRange(firstHeight, firstHeight, leader?.base))[firstHeight];
+        periodFirst[firstHeight] = asCheckable(first);
+      }
+    }
+
+    const chain = checkHeaderChain(headers, b, top, periodFirst);
+    let work = 0n;
+    for (let h = b + 1; h <= top; h++) {
+      if (loaded[h].pow.ok) work += loaded[h].pow.expectedHashes;
+    }
+
+    const n = top - b + 1;
+    const checks = [
+      {
+        label: n === 1
+          ? 'The newest block is this one'
+          : `${fmt(n - 1)} block${n === 2 ? '' : 's'} on top each point to the block before, back to this one`,
+        ok: chain.linked
+      },
+      { label: 'Every header has valid proof of work', ok: chain.powOk },
+      { label: 'Every header has the difficulty Bitcoin requires after the one before', ok: chain.difficultyOk }
+    ];
+
+    let pending = null;
+
+    if (!deep) {
+      checks.push({
+        label: chainState === 'single'
+          ? `It ends at the newest block (${fmt(cmp.height)}), from your only provider`
+          : `It ends at the newest block the providers agree on (${fmt(cmp.height)})`,
+        ok: loaded[top].hash === cmp.hash
+      });
+    } else {
+      const atTop = await checkBlockAtHeight(top, loaded[top].hash);
+      checks.push(atTop.check);
+      pending = atTop.pending;
+    }
+
+    const facts = [
+      { label: deep ? 'Confirmations (checked)' : 'Confirmations', value: deep ? `${fmt(n)} of ${fmt(cmp.height - b + 1)}` : fmt(n) },
+      ...(work > 0n ? [{ label: 'Work built on top', value: `${formatBigPower(work)} hashes (2^${log2(work).toFixed(2)})` }] : [])
+    ];
+
+    if (!allOk(checks.filter(c => !(pending && c === checks[checks.length - 1])))) {
+      return result('fail', 'Confirmations check FAILED', checks, {
+        facts,
+        note: "This block isn't on the chain the providers agree on. It may " +
+          'have been replaced by other blocks (a reorganisation), or a ' +
+          'provider sent headers that don\'t fit together.'
+      });
+    }
+
+    if (pending) {
+      return result('error', `${pending}; confirmations not confirmed`, checks, { facts });
+    }
+
+    return result(
+      'ok',
+      deep
+        ? `At least ${fmt(n)} confirmations verified`
+        : `${fmt(n)} confirmation${n === 1 ? '' : 's'} verified`,
+      checks,
+      {
+        facts,
+        confirmations: n,
+        atLeast: deep,
+        note: (deep
+          ? `Checked header by header for the first ${fmt(n)} blocks, the most this page downloads. `
+          : '') +
+          'Each block on top had to be mined after this one: undoing the ' +
+          'payment would mean redoing all of that work faster than the rest ' +
+          'of the network.' +
+          (chainState === 'single' ? ' With only one provider, its chain is the only one compared.' : '')
+      }
+    );
+  } catch (err) {
+    return errorResult("Couldn't check the confirmations", err);
+  }
+}
+
+// =====================================================
 // CHAIN TIP (across providers)
 // =====================================================
 
@@ -1188,6 +1361,7 @@ export async function verifyTip() {
       comparison: cmp,
       providers: tips.map(t => ({
         name: t.name,
+        base: t.base,
         ok: t.ok,
         height: t.height,
         hash: t.hash,

@@ -21,6 +21,7 @@ For how to read the badges on screen, see the
 | [Transaction contents](#transaction-contents) | Transaction pages | Always |
 | [Input amounts and fee](#input-amounts-and-fee) | Transaction pages | Automatically up to 25 spent transactions; above that, on request |
 | [Transaction inclusion](#transaction-inclusion) | Transaction pages | Confirmed transactions |
+| [Confirmations](#confirmations) | Transaction pages | Once inclusion is verified; up to 144 blocks deep, "at least 144" beyond |
 | [Chain tip agreement](#chain-tip-agreement) | Home page; Providers page | Always |
 | [Total work behind the tip](#total-work-behind-the-tip) | Home page | On request the first time, then automatically |
 | [Not verified](#not-verified) | Addresses, mempool, fees | Never: shown as reported |
@@ -203,6 +204,35 @@ providers report that block.
 provider (for example your own node, used exclusively) its word decides
 which block is at that height. Unconfirmed transactions show "nothing to
 prove" until they are in a block.
+
+## Confirmations
+
+**Checks** how many blocks are built on the transaction's block, header by
+header, instead of taking the provider's count:
+
+- The headers from the transaction's block up to the newest block are
+  downloaded (about ten per request). Each is rebuilt from the provider's
+  data and must hash to its block id, so no field can be altered.
+- Each header points to the one before it, back to the transaction's
+  block.
+- Each has valid proof of work and the difficulty Bitcoin requires after
+  the one before: the same inside a *difficulty period*, the *retarget*
+  at the start of a new one.
+- The run ends at the newest block the providers agree on (see
+  [chain tip agreement](#chain-tip-agreement)).
+- More than 144 blocks deep (about a day), only the first 144 are
+  checked, and every provider must have the last of them at its height.
+  The badge then says "at least 144 confirmations".
+
+A failure means the block isn't on the chain the providers agree on: it
+was replaced by other blocks (a reorganisation), or a provider sent
+headers that don't fit together. If the providers disagree about the
+newest block, the check is grey until they agree.
+
+**Doesn't prove** that the chain is the one with the most work in the
+whole network: it is the one your providers agree on. The count is
+checked when the page opens; the number shown above it keeps going up
+with each new block.
 
 ## Chain tip agreement
 
