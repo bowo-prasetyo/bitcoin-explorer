@@ -6,7 +6,8 @@ import {
   getProviderSettings,
   normalizeEndpoint,
   setCustomProvider,
-  testEndpoint
+  testEndpoint,
+  trustProviderAgain
 } from '../api.js';
 
 import { verifyTip } from '../verify.js';
@@ -37,7 +38,9 @@ export default {
 
       <p class="muted">
         Lookups go to the providers below, best-ranked first; if one fails,
-        the next is tried.
+        the next is tried. A provider that sends an invalid chain tip is
+        not used for lookups until its tip passes the check again, or for
+        at most 24 hours.
         <span v-if="settings.custom?.exclusive">
           You've chosen to use only your own endpoint, so nothing is sent to
           anyone else.
@@ -59,7 +62,13 @@ export default {
               <td>
                 {{ p.name }}
                 <span v-if="p.preferred" class="tag tag-ok">preferred</span>
+                <span v-if="p.distrusted" class="tag tag-fail">not used</span>
                 <div class="small muted hash">{{ p.base }}</div>
+                <div v-if="p.distrusted" class="small neg">
+                  Sent an invalid chain tip {{ ago(p.distrusted.since) }}:
+                  {{ p.distrusted.reason }}.
+                  <button type="button" class="link-button" @click="useAgain(p)">Use it again</button>
+                </div>
                 <div v-if="p.lastError" class="small neg">Last error: {{ p.lastError }}</div>
               </td>
               <td class="num">{{ p.latency === null ? '–' : p.latency + ' ms' }}</td>
@@ -270,6 +279,13 @@ export default {
         this.checking = false;
         this.refreshHealth();
       }
+    },
+
+    // The user's override. The next tip check distrusts it again if its
+    // tip is still invalid.
+    useAgain(p) {
+      trustProviderAgain(p.base);
+      this.refreshHealth();
     },
 
     async checkTip() {

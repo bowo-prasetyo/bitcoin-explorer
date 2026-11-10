@@ -103,6 +103,10 @@ export default {
       } catch (err) {
         if (err instanceof ApiError && err.kind === 'not_found') {
           this.error = `There is no block at height ${formatNumber(result.height)} yet.`;
+        } else if (err instanceof ApiError && err.kind === 'distrusted') {
+          this.error =
+            'Every data provider sent an invalid chain tip, so Assay has ' +
+            'stopped asking them. See the Providers page.';
         } else {
           this.error =
             "Couldn't reach any Bitcoin data provider to look this up. " +

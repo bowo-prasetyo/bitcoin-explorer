@@ -129,7 +129,9 @@ of every browser module, on every push and pull request.
   Providers are ranked by a health score, re-checked every 5 minutes
   while the tab is visible, and the last one that worked is preferred on
   the next visit. A "not found" answer counts as an answer, not as a
-  provider failure.
+  provider failure. A provider caught sending an invalid chain tip is
+  left out of lookups until its tip passes the check again (24 hours at
+  most), so pages never fall back to a provider known to send fake blocks.
 - **Your own endpoint** is tried first, or used exclusively. It must send
   CORS headers and, from the https site, use https, except for localhost
   and `.onion` addresses in Tor Browser. It is tested before it can be
@@ -180,6 +182,7 @@ of every browser module, on every push and pull request.
 | `glossary.js` | The in-app glossary; must match `docs/glossary.md` (a test checks) |
 | `live.js` | Live "new block" notifications over WebSocket |
 | `consensus.js` | Compares chain tips across providers |
+| `distrust.js` | Leaves providers that sent an invalid tip out of lookups, and when to let them back in |
 | `chainwork.js` | Total work behind a tip, from one header per difficulty period |
 | `inputs.js` | Checks inputs against the raw transactions they spend |
 | `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |

@@ -30,13 +30,18 @@ export default {
       () => props.status.error?.kind === 'not_found'
     );
 
+    // Every provider is left out of lookups for sending an invalid tip.
+    const distrusted = computed(
+      () => props.status.error?.kind === 'distrusted'
+    );
+
     const absoluteTime = computed(() =>
       props.status.updatedAt
         ? new Date(props.status.updatedAt).toLocaleString()
         : ''
     );
 
-    return { ago, notFound, absoluteTime };
+    return { ago, notFound, distrusted, absoluteTime };
   },
 
   // Only the notices sit in the live region: they change when something
@@ -50,6 +55,16 @@ export default {
       <div v-if="status.error && notFound" class="notice notice-error">
         This {{ what }} was not found.
         <span class="muted">{{ status.error.message }}</span>
+      </div>
+
+      <div v-else-if="distrusted" class="notice notice-error">
+        Every data provider sent an invalid chain tip, so Assay has stopped
+        asking them.
+        <template v-if="status.updatedAt">
+          Showing saved data from
+          <span :title="absoluteTime" aria-hidden="true">{{ ago }}</span><span class="visually-hidden">{{ absoluteTime }}</span>.
+        </template>
+        <router-link to="/providers">See the providers</router-link>
       </div>
 
       <div v-else-if="status.error && !status.updatedAt" class="notice notice-error">

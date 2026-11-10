@@ -233,7 +233,23 @@ page show the result:
 | *All N providers agree on the tip* | Everyone reports the same newest block. |
 | *Providers agree; one is catching up* | One is a block or so behind on the same chain. This is normal. |
 | *Providers DISAGREE on the chain* | They report different chains. Be careful until this clears. |
-| *mempool.space sent an invalid chain tip* (or *N providers sent invalid chain tips*) | That provider named a newest block whose header fails proof of work: it is broken, or showing you a fake chain. Treat its data with suspicion until this clears. |
+| *mempool.space sent an invalid chain tip* (or *N providers sent invalid chain tips*) | That provider named a newest block whose header fails proof of work: it is broken, or showing you a fake chain. Assay stops using it for lookups (see below). |
+
+**A provider that sends an invalid tip is not used for lookups.** The
+**Providers** page marks it *not used*, with the reason. Your lookups go
+to the other providers instead. Balances, the mempool and fees can't be
+checked, so Assay doesn't ask a provider that has already sent a fake
+block. It is used again:
+
+- as soon as its tip passes the check, which runs on the home page with
+  every new block and on the **Providers** page (**Check again**);
+- after 24 hours at most, even if the check hasn't run since;
+- or when you click **Use it again** next to it. If its tip is still
+  invalid, the next check leaves it out again.
+
+If every provider is left out, for example your own node set as the
+only endpoint, pages say *Every data provider sent an invalid chain tip,
+so Assay has stopped asking them* instead of loading anything.
 | *Only one provider configured / answered: nothing to compare* | There is nothing to compare. This is expected if you use only your own node. |
 
 ### 4.6 Look up an address
@@ -352,6 +368,7 @@ and work offline. Nothing is sent anywhere.
 | Block headers used by the difficulty and total-work checks (about 80 bytes each) | Until you clear them |
 | The last 50 mempool-chart samples | Until pruned with the rest of the cache |
 | Your endpoint, live updates on/off, total-work opt-in, the last provider that worked | Until you change or clear them |
+| Providers left out of lookups for sending an invalid chain tip, with the reason | Until a tip check passes, or 24 hours |
 
 To erase everything, clear the site data for the Assay site in your
 browser's settings. This is usually under *Privacy*, then *Cookies and
@@ -374,6 +391,12 @@ Open **What was checked** to see which check failed. Then compare with
 another provider, or with your own node. Please
 [open an issue](https://github.com/bowo-prasetyo/bitcoin-explorer/issues)
 with the link to the page.
+
+**Pages say "Every data provider sent an invalid chain tip".**
+Every provider was caught sending a block that fails proof of work, so
+Assay won't show what they send. If you use your own node, check that
+it runs Bitcoin **mainnet**: a testnet, signet or regtest node fails
+this check. Then open **Providers** and click **Check again**.
 
 **The indicator stays on "Polling".**
 This is expected with Blockstream or electrs endpoints, which don't offer
