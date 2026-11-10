@@ -41,18 +41,28 @@ The header is the same on every page:
 The footer links to the **Glossary**, this guide, [What your browser
 verifies](verification.md) and the source code.
 
-The home page has these cards, top to bottom:
+The home page has these cards. On a wide screen they sit side by side,
+two to a row; on a phone, one below the other:
 
 | Card | What it shows |
 |---|---|
-| **Search** | Look up a block, transaction or address. |
-| **Legacy of Satoshi Nakamoto** | Links to the very first block, its transaction and its address. |
-| **Chain tip** | The newest block, and a badge saying whether the data providers agree on it. |
+| **Search** | Look up a block, transaction or address. **Try:** links open the very first block, its transaction and Satoshi Nakamoto's address. |
+| **Chain tip** | The newest block, and a badge saying whether the data providers agree on it. If the check fails or can't run, **Check again** asks them all once more. |
 | **Work behind the tip** | An optional check of all the work behind the chain. See [task 4.4](#44-check-the-whole-chain). |
 | **Recent blocks** | The latest blocks. Click a height to open the block. |
 | **Mempool** | Transactions waiting to be confirmed, and their total size and fees. |
 | **Fee estimates** | The fee rate likely to get a transaction confirmed within a given number of blocks. |
-| **Fee histogram** | How much waiting data pays each fee rate. |
+| **Fee histogram** | How much is waiting at each fee rate, in MvB. Each bar is a range, for example *5–10* sat/vB; *50+* has no upper limit. **Show as a table** lists every range. |
+
+Every page has its own browser tab title, such as *Block 840,000 · Assay*,
+so open tabs and your history are easy to tell apart.
+
+Times are shown in UTC, for example *2009-01-03 18:15 UTC*. When your own
+time zone differs, the time there is shown underneath, followed by *your
+time*.
+
+On a phone, wide tables (a block's transactions, an address's history,
+the providers) show each row as a small card, so no column is cut off.
 
 ## 2. Search
 

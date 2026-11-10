@@ -68,7 +68,11 @@ Every check, with exactly what it proves and doesn't, is in
   open the in-app glossary.
 - **Copy** buttons for hashes, txids and addresses.
 - **Home:** chain tip, recent blocks, mempool, fee estimates and a fee
-  histogram.
+  histogram (with a table view), in two columns on wide screens.
+- **Comfortable to use:** keyboard focus is always visible, controls are
+  at least 44 px tall on touch screens, wide tables become cards on
+  phones, each page has its own tab title, and times show your own time
+  zone next to UTC.
 - **Blocks:** time, confirmations, size, weight, links to neighbouring
   blocks, and all transactions, 25 per page.
 - **Transactions:** status, confirmations, fee and fee rate, size, every
@@ -179,6 +183,7 @@ of every browser module, on every push and pull request.
 | `spv.js` | Verification primitives: header proof of work, Merkle roots and proofs, txids from raw transactions |
 | `verify.js` | Runs the checks behind each badge |
 | `summary.js` | Sums up a page's badges in one line |
+| `titles.js` | Browser tab title for each page |
 | `glossary.js` | The in-app glossary; must match `docs/glossary.md` (a test checks) |
 | `live.js` | Live "new block" notifications over WebSocket |
 | `consensus.js` | Compares chain tips across providers |
