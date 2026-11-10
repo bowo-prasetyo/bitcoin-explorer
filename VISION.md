@@ -135,15 +135,21 @@ Since phase 3, work ships as individual features:
   check them, and they aren't part of the Esplora API, so they wouldn't
   work with your own node.
 
+### Installable, offline app ✅
+
+- A web app manifest and icons make Assay installable from Chrome, Edge
+  and Safari. A service worker saves the app's own files and pinned
+  libraries, so after one visit it opens with no connection and shows
+  the pages viewed before, marked as saved, with their age.
+- The service worker never stores Bitcoin data or lookups, and the
+  app's files are network-first, so online visits always run the
+  deployed version without a build step to version them.
+
 ### Next ideas
 
 - Link every header inside each period. That needs all ~925,000 headers
   (~74 MB), so it's likely only worthwhile with a bulk-header source or a
   user's own node.
-
-### Later
-
-- Installable PWA with offline support.
 
 ### Out of scope for now
 

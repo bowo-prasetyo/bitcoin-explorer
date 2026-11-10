@@ -302,6 +302,41 @@ Below, **Mempool transaction count** is recorded by your browser while
 the page is open. It isn't history: Assay can't check past mempool
 contents, so it doesn't show a provider's.
 
+### 4.8 Install Assay and use it offline
+
+Assay can be installed like an app, with its own icon and window, and it
+opens without a connection.
+
+**Install it**
+
+- **Chrome, Edge and other Chromium browsers** (computer or Android):
+  click **Install app** at the bottom of any page, or use the install
+  icon in the address bar.
+- **Safari on iPhone or iPad:** tap **Share**, then **Add to Home Screen**.
+- **Safari on a Mac:** **File**, then **Add to Dock**.
+- **Firefox** on a computer can't install sites as apps. Assay still
+  works offline in a normal tab.
+
+**Offline**
+
+After one visit with a connection, Assay opens with none. An amber bar
+says *You're offline*, and:
+
+- pages you opened in the last 7 days show what was saved, with its age,
+  for example *You're offline. Showing what was saved 2 h ago*;
+- a page you never opened says it loads by itself once you're back
+  online;
+- transactions and addresses you opened before still open from search,
+  but looking up a block by height or hash needs a connection;
+- the glossary works fully; checks that need new data can't run, and
+  their badges show **!**.
+
+When the connection returns, the bar disappears and every panel
+refreshes by itself.
+
+Online, Assay always loads its newest version; the saved copy is only
+used when there's no connection.
+
 ## 5. Use your own node
 
 You can point Assay at an *Esplora* API that you run or trust. Common
@@ -396,6 +431,9 @@ To keep lookups private, [use your own node](#5-use-your-own-node) with
 **Use only my endpoint** ticked. Then lookups and the live connection go
 only to your server.
 
+Offline support saves only Assay's own files and its three libraries.
+It never saves or forwards your lookups.
+
 ## 8. Data stored in your browser
 
 Assay saves a few things in your browser so that pages load instantly
@@ -408,6 +446,7 @@ and work offline. Nothing is sent anywhere.
 | The last 50 mempool-chart samples | Until pruned with the rest of the cache |
 | Your endpoint, live updates on/off, total-work opt-in, the last provider that worked | Until you change or clear them |
 | Providers left out of lookups for sending an invalid chain tip, with the reason | Until a tip check passes, or 24 hours |
+| Assay's own files and the three libraries it uses (about 650 KB), so it opens offline | Replaced by newer copies whenever you're online |
 
 To erase everything, clear the site data for the Assay site in your
 browser's settings. This is usually under *Privacy*, then *Cookies and
@@ -436,6 +475,13 @@ Every provider was caught sending a block that fails proof of work, so
 Assay won't show what they send. If you use your own node, check that
 it runs Bitcoin **mainnet**: a testnet, signet or regtest node fails
 this check. Then open **Providers** and click **Check again**.
+
+**There's no "Install app" button.**
+Only Chromium-based browsers (Chrome, Edge, Brave, Samsung Internet)
+offer it, and only while Assay isn't already installed. In Safari, use
+**Add to Home Screen** or **Add to Dock**; see [task 4.8](#48-install-assay-and-use-it-offline).
+Opening Assay from a plain `http://` address (other than `localhost`)
+disables installing and offline use.
 
 **The indicator stays on "Polling".**
 This is expected with Blockstream or electrs endpoints, which don't offer

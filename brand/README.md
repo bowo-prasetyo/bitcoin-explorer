@@ -19,6 +19,8 @@ reads as a block, which ties it to Bitcoin without using the ₿ symbol.
 | `../favicon.svg` | Simplified mark: one flat shape, taller, heavier check. For 16–32 px. |
 | `../favicon.ico` | 16, 32 and 48 px raster of `favicon.svg`, for older browsers. |
 | `../apple-touch-icon.png` | 180 px, the mark on an opaque ink tile (iOS fills transparency with black). |
+| `../icon-192.png`, `../icon-512.png` | Installed-app icons: the mark at about 78 % of an ink tile. |
+| `../icon-maskable-512.png` | Installed-app icon for Android's shaped masks: the mark at about 58 %, inside the safe zone. |
 | `social-preview.png` | 1280×640 image for link previews: the repository's Social preview (Settings → General). |
 
 The wordmark is converted to outlines, so the SVGs don't depend on any
