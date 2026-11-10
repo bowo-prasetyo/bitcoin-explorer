@@ -14,8 +14,8 @@ reads as a block, which ties it to Bitcoin without using the ₿ symbol.
 | File | Use |
 |---|---|
 | `assay-mark.svg` | The mark alone, with the shaded ingot. 32 px and up. |
-| `assay-logo.svg` | Mark and wordmark, light text, for dark backgrounds (the app). |
-| `assay-logo-on-light.svg` | Mark and wordmark, dark text, for light backgrounds. |
+| `assay-logo.svg` | Mark and wordmark, light text, for dark backgrounds (the app in dark mode). |
+| `assay-logo-on-light.svg` | Mark and wordmark, dark text, for light backgrounds (the app in light mode). |
 | `../favicon.svg` | Simplified mark: one flat shape, taller, heavier check. For 16–32 px. |
 | `../favicon.ico` | 16, 32 and 48 px raster of `favicon.svg`, for older browsers. |
 | `../apple-touch-icon.png` | 180 px, the mark on an opaque ink tile (iOS fills transparency with black). |

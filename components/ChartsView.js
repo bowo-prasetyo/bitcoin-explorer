@@ -20,6 +20,7 @@ import {
 } from '../history.js';
 
 import { formatNumber } from '../format.js';
+import { chartColor } from '../chart-theme.js';
 
 const { markRaw, nextTick } = Vue;
 
@@ -336,8 +337,8 @@ export default {
 
       const series = (data, extra = {}) => ({
         data,
-        borderColor: '#4fc3f7',
-        backgroundColor: '#4fc3f7',
+        borderColor: chartColor('--chart-1'),
+        backgroundColor: chartColor('--chart-1'),
         borderWidth: 1.5,
         pointRadius: 0,
         ...extra
@@ -369,7 +370,7 @@ export default {
             {
               label: '10-minute target',
               data: span.map(x => ({ x, y: TARGET_MINUTES })),
-              borderColor: '#ffb300',
+              borderColor: chartColor('--chart-target'),
               borderDash: [6, 4],
               borderWidth: 1.5,
               pointRadius: 0
@@ -446,8 +447,8 @@ export default {
             datasets: [{
               label: 'Pending transactions',
               data: [],
-              borderColor: '#4fc3f7',
-              backgroundColor: '#4fc3f7',
+              borderColor: chartColor('--chart-1'),
+              backgroundColor: chartColor('--chart-1'),
               pointRadius: 2
             }]
           },
