@@ -233,6 +233,7 @@ page show the result:
 | *All N providers agree on the tip* | Everyone reports the same newest block. |
 | *Providers agree; one is catching up* | One is a block or so behind on the same chain. This is normal. |
 | *Providers DISAGREE on the chain* | They report different chains. Be careful until this clears. |
+| *mempool.space sent an invalid chain tip* (or *N providers sent invalid chain tips*) | That provider named a newest block whose header fails proof of work: it is broken, or showing you a fake chain. Treat its data with suspicion until this clears. |
 | *Only one provider configured / answered: nothing to compare* | There is nothing to compare. This is expected if you use only your own node. |
 
 ### 4.6 Look up an address
