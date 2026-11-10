@@ -11,6 +11,7 @@ import VerifySummary from './components/VerifySummary.js';
 import GlossaryTerm from './components/GlossaryTerm.js';
 import { liveFeed, liveCandidates } from './live.js';
 import { getProviderSettings } from './api.js';
+import { styleCharts } from './chart-theme.js';
 import { connection, installApp, registerServiceWorker, runningInstalled } from './connection.js';
 
 // One shared, reactive copy of the live-update status for the header.
@@ -29,9 +30,29 @@ const REPO_URL = 'https://github.com/bowo-prasetyo/bitcoin-explorer';
 const HELP_URL = REPO_URL + '/blob/main/docs/user-guide.md';
 const VERIFICATION_URL = REPO_URL + '/blob/main/docs/verification.md';
 
+// Light or dark, as theme.js applied it, for the logo and the footer
+// control. theme.js always runs first (a plain script in <head>).
+const themeState = Vue.reactive({
+  theme: window.AssayTheme?.theme() || 'dark',
+  choice: window.AssayTheme?.choice() || 'system'
+});
+
+window.AssayTheme?.onChange((theme, choice) => {
+  themeState.theme = theme;
+  themeState.choice = choice;
+});
+
+const THEME_CHOICES = [
+  ['system', 'System'],
+  ['light', 'Light'],
+  ['dark', 'Dark']
+];
+
 const App = {
   data() {
     return {
+      themeState,
+      THEME_CHOICES,
       live: liveState,
       connection,
       standalone: runningInstalled(),
@@ -43,20 +64,26 @@ const App = {
   computed: {
     // The home page has its own, larger search box.
     showHeaderSearch() { return this.$route.path !== '/'; },
+    logo() {
+      return this.themeState.theme === 'light'
+        ? 'brand/assay-logo-on-light.svg'
+        : 'brand/assay-logo.svg';
+    },
     // The browser can install Assay, and it isn't already running installed.
     canInstall() { return !!this.connection.installPrompt && !this.standalone; },
     liveLabel() { return LIVE_LABELS[this.live.status][0]; },
     liveTitle() { return LIVE_LABELS[this.live.status][1]; }
   },
   methods: {
-    installApp
+    installApp,
+    setTheme(choice) { window.AssayTheme?.set(choice); }
   },
   template: `
   <div>
 
     <header>
       <router-link to="/" class="brand" aria-label="Assay home">
-        <img src="brand/assay-logo.svg" alt="Assay" width="90" height="24">
+        <img :src="logo" alt="Assay" width="90" height="24">
       </router-link>
       <search-box v-if="showHeaderSearch" compact class="header-search"></search-box>
       <router-link to="/charts">Charts</router-link>
@@ -85,6 +112,20 @@ const App = {
       <a :href="VERIFICATION_URL" target="_blank" rel="noopener">What gets verified</a>
       <a :href="REPO_URL" target="_blank" rel="noopener">Source</a>
       <button v-if="canInstall" type="button" class="link-button" @click="installApp">Install app</button>
+
+      <fieldset class="theme-choice">
+        <legend>Theme</legend>
+        <label v-for="[value, label] in THEME_CHOICES" :key="value">
+          <input
+            type="radio"
+            name="theme"
+            :value="value"
+            :checked="themeState.choice === value"
+            @change="setTheme(value)"
+          >
+          {{ label }}
+        </label>
+      </fieldset>
     </footer>
 
   </div>
@@ -105,14 +146,6 @@ function showFatalError(err) {
   document.body.replaceChildren(box);
 }
 
-// Chart.js defaults to #666 text, about 3:1 on these cards. Readable
-// text and quiet grid lines for every chart.
-function styleCharts() {
-  if (typeof Chart === 'undefined') return;
-  Chart.defaults.color = '#bdbdbd';
-  Chart.defaults.borderColor = '#333';
-  Chart.defaults.font.size = 13;
-}
 
 async function bootstrap() {
   try {

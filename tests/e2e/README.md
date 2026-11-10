@@ -41,6 +41,7 @@ If CI fails, its screenshots are attached to the run.
 | `06-chainwork` | Total work behind the tip, matching Bitcoin Core's value for the genesis block |
 | `07-difficulty-history` | Difficulty traced back to the genesis block, and the block page's trace button |
 | `08-live-updates` | Live updates: blocks-only subscription, less polling, reconnect back-off, hidden tabs, exclusive endpoint |
+| `09-theme` | Light and dark: following the device (live), the footer choice and its memory, no flash on load, logo, title-bar colour, chart colours, blocked storage |
 
 ## What they can't cover
 

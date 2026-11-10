@@ -47,8 +47,8 @@ export default {
       role="note"
       :style="{ transform: shift ? 'translateX(' + shift + 'px)' : null }"
     >
-      <strong>{{ entry.term }}:</strong>
-      <span v-html="html"></span>
+      <!-- Vue drops whitespace between elements on separate lines. -->
+      <strong>{{ entry.term }}:</strong>{{ ' ' }}<span v-html="html"></span>
       <router-link class="term-more" :to="{ path: '/glossary', query: { term } }">All terms</router-link>
     </span>
   </span>

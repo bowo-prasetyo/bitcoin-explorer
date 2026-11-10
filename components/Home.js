@@ -24,6 +24,7 @@ import {
 } from '../format.js';
 
 import { now } from './DataStatus.js';
+import { chartColor } from '../chart-theme.js';
 
 import {
   verifyTip,
@@ -443,7 +444,7 @@ export default {
             datasets: [{
               label: 'Waiting',
               data: [],
-              backgroundColor: '#4fc3f7'
+              backgroundColor: chartColor('--chart-1')
             }]
           },
           options: {
