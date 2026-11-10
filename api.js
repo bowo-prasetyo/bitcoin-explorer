@@ -404,6 +404,12 @@ export async function getBlockTxids(hash) {
   return await r.json();
 }
 
+// The txid at `index` in the block (0 is the coinbase).
+export async function getBlockTxidAt(hash, index) {
+  const r = await apiFetch(`/block/${hash}/txid/${index}`);
+  return (await r.text()).trim().toLowerCase();
+}
+
 // Esplora returns block transactions 25 at a time; startIndex must be a
 // multiple of 25.
 export const BLOCK_TXS_PAGE_SIZE = 25;

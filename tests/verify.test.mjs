@@ -306,3 +306,80 @@ test('tip: a valid-work header one above a tip it does not build on is a conflic
   assert.equal(r.state, 'fail');
   assert.equal(r.comparison.state, 'conflict');
 });
+
+// ---- Block height in the coinbase (BIP34) ----
+
+const { computeMerkleRoot, bip34Prefix } = await import('../spv.js');
+
+// A block at 900,123: a coinbase committing to that height, then one
+// more transaction. Only its Merkle root matters here (the header itself
+// is checked by verifyBlockHeader).
+const cbWith = scriptSig =>
+  '01000000' + '01' + '00'.repeat(32) + 'ffffffff' +
+  le(scriptSig.length / 2, 1) + scriptSig + 'ffffffff' +
+  '01' + le(312_500_000, 8) + le(SPK_A.length / 2, 1) + SPK_A + '00000000';
+const CB = cbWith(bip34Prefix(900123) + '2f6d696e65722f');
+const CB_ID = txidOf(CB);
+const ROOT = await computeMerkleRoot([CB_ID, txidOf(SPEND)]);
+const BLOCK = { id: 'b9'.repeat(32), height: 900123 };
+
+function serveBlockCoinbase() {
+  serve(`/block/${BLOCK.id}/txid/0`, CB_ID);
+  serve(`/tx/${CB_ID}/hex`, CB);
+  serve(`/tx/${CB_ID}/merkle-proof`, { block_height: 900123, merkle: [txidOf(SPEND)], pos: 0 });
+}
+
+test('height: a block whose coinbase commits to its height passes', async () => {
+  serveBlockCoinbase();
+  const r = await V.verifyBlockHeight(BLOCK, { merkleRoot: ROOT });
+  assert.equal(r.state, 'ok', JSON.stringify(r.checks));
+  assert.equal(r.title, 'Height 900,123 is written in the block');
+});
+
+test('height: a real block shown under another height FAILS', async () => {
+  serveBlockCoinbase();
+  const r = await V.verifyBlockHeight({ ...BLOCK, height: 900200 }, { merkleRoot: ROOT });
+  assert.equal(r.state, 'fail');
+  assert.ok(failed(r, 'it says 900,123'), JSON.stringify(r.checks));
+});
+
+test("height: a transaction that isn't first in the block can't stand in for the coinbase", async () => {
+  // The provider names the second transaction as the coinbase.
+  const fakeCb = cbWith(bip34Prefix(900123));
+  const id = txidOf(fakeCb);
+  serve(`/block/${BLOCK.id}/txid/0`, id);
+  serve(`/tx/${id}/hex`, fakeCb);
+  serve(`/tx/${id}/merkle-proof`, { block_height: 900123, merkle: [CB_ID], pos: 1 });
+  const r = await V.verifyBlockHeight(BLOCK, { merkleRoot: ROOT });
+  assert.equal(r.state, 'fail');
+  assert.ok(failed(r, 'puts it first in this block'));
+});
+
+test('height: blocks before BIP34 get no height badge', async () => {
+  assert.equal(await V.verifyBlockHeight({ id: G_HASH, height: 0 }, { merkleRoot: G_TXID }), null);
+  assert.equal(await V.verifyBlockHeight({ id: G_HASH, height: 227930 }, { merkleRoot: G_TXID }), null);
+});
+
+test('inclusion: providers agreeing on a block does not let them renumber it', async () => {
+  // Both providers claim the genesis block is block 900,123. Its coinbase
+  // (the real genesis coinbase) commits to no such height.
+  serveGenesisInclusion();
+  const lie = { ...G_TX, status: { confirmed: true, block_height: 900123, block_hash: G_HASH } };
+  serve(`/tx/${G_TXID}/merkle-proof`, { block_height: 900123, merkle: [], pos: 0 });
+  serve('/block-height/900123', G_HASH);
+  serve(`/block/${G_HASH}/txid/0`, G_TXID);
+  serve(`/tx/${G_TXID}/hex`, G_RAW);
+  const r = await V.verifyTransactionInclusion(lie);
+  assert.equal(r.state, 'fail');
+  assert.ok(r.checks.some(c => /2 of 2 providers have this block/.test(c.label) && c.ok));
+  assert.ok(failed(r, 'commits to height 900,123'));
+});
+
+test('checkHeightInCoinbase: an honest post-BIP34 block passes every step', async () => {
+  // The coinbase step that inclusion runs. (A full inclusion test would
+  // need a real post-BIP34 header, which the fixtures don't have.)
+  serveBlockCoinbase();
+  const r = await V.checkHeightInCoinbase(BLOCK.id, 900123, ROOT);
+  assert.equal(r.applies, true);
+  assert.ok(r.checks.every(c => c.ok), JSON.stringify(r.checks));
+});

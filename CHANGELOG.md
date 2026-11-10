@@ -7,6 +7,16 @@ against the live data providers.
 
 ## [Unreleased]
 
+### Added
+
+- **Block height (BIP34):** from block 227,931 on, block pages check that
+  the height shown is the one the block records in its coinbase, and
+  transaction inclusion checks it for the transaction's block. The
+  coinbase must hash to its txid, be first in the block by Merkle proof,
+  and start with the height in Bitcoin Core's exact encoding. A provider
+  can no longer show a real block under the wrong height (or
+  confirmations), even when every provider says the same.
+
 ### Security
 
 A review of every check against Bitcoin Core's rules found that a

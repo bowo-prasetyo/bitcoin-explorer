@@ -336,9 +336,9 @@ export function parseTransaction(rawHex) {
   for (let i = 0; i < vinCount; i++) {
     const prevTxid = bytesToHex(take(32).slice().reverse());
     const prevVout = readUInt32LE(take(4), 0);
-    take(varint()); // scriptSig
+    const scriptSig = bytesToHex(take(varint()));
     take(4);        // sequence
-    vin.push({ txid: prevTxid, vout: prevVout });
+    vin.push({ txid: prevTxid, vout: prevVout, scriptSig });
   }
 
   const vout = [];
@@ -387,4 +387,74 @@ export function parseTransaction(rawHex) {
 export async function txidFromRaw(rawHex) {
   const { legacyHex } = parseTransaction(rawHex);
   return reverseHex(await doubleSHA256(legacyHex));
+}
+
+// =====================================================
+// BIP34: BLOCK HEIGHT IN THE COINBASE
+// =====================================================
+
+// From this height on, mainnet requires every block's coinbase scriptSig
+// to start with the block's height (Bitcoin Core: consensus.BIP34Height,
+// block 000000000000024b89b42a942fe0d9fea3bb44ab7bd1b19115dd6a759c0808b8).
+export const BIP34_HEIGHT = 227931;
+
+// The script bytes Bitcoin Core requires at the start of the coinbase
+// scriptSig: CScript() << nHeight. Heights 1-16 are a single opcode
+// (OP_1..OP_16); others push their minimal little-endian CScriptNum, with
+// an extra 0x00 byte when the top bit would otherwise read as a sign.
+export function bip34Prefix(height) {
+  if (!Number.isInteger(height) || height < 0 || height > 0x7fffffff) {
+    throw new Error('Invalid height');
+  }
+
+  if (height === 0) return '00';                       // OP_0
+  if (height <= 16) return (0x50 + height).toString(16); // OP_1..OP_16
+
+  const bytes = [];
+  for (let n = height; n > 0; n = Math.floor(n / 256)) {
+    bytes.push(n % 256);
+  }
+  if (bytes[bytes.length - 1] & 0x80) {
+    bytes.push(0);
+  }
+
+  return bytesToHex([bytes.length, ...bytes]);
+}
+
+// The height a coinbase scriptSig commits to: its first push read as a
+// little-endian number, or null when it doesn't start with a small push.
+// For display only; checkCoinbaseHeight() is the rule.
+export function heightInScriptSig(scriptSigHex) {
+  const bytes = hexToBytes(scriptSigHex);
+  const len = bytes[0];
+
+  if (!(len >= 1 && len <= 5) || bytes.length < 1 + len) {
+    return null;
+  }
+
+  let n = 0;
+  for (let i = len; i >= 1; i--) {
+    n = n * 256 + bytes[i];
+  }
+  return n;
+}
+
+// Bitcoin Core's ContextualCheckBlock (bad-cb-height): does this raw
+// coinbase commit to `height`? Returns
+//   { ok, applies, coinbase, claimed }
+// `applies` is false before BIP34_HEIGHT, where blocks carry no height.
+export function checkCoinbaseHeight(rawHex, height) {
+  const tx = parseTransaction(rawHex);
+  const scriptSig = tx.coinbase ? tx.vin[0].scriptSig : null;
+
+  if (height < BIP34_HEIGHT) {
+    return { ok: true, applies: false, coinbase: tx.coinbase, claimed: null };
+  }
+
+  return {
+    ok: scriptSig !== null && scriptSig.startsWith(bip34Prefix(height)),
+    applies: true,
+    coinbase: tx.coinbase,
+    claimed: scriptSig === null ? null : heightInScriptSig(scriptSig)
+  };
 }

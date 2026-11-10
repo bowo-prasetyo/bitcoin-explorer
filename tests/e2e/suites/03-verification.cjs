@@ -144,6 +144,7 @@ module.exports = async function ({ chromium, BASE, check }) {
   let b = await badgeTexts(page);
   check('block: PoW verified', b.some(t => /verify-ok :: Proof of work verified/.test(t)), b.join(' | '));
   check('block: tx list verified', b.some(t => /verify-ok :: Transaction list verified/.test(t)));
+  check('block: no height badge before BIP34 (block 227,931)', !b.some(t => /Height/.test(t)), b.join(' | '));
   await page.click('.verify-ok >> text=What was checked');
   const det = await page.innerText('.verify-ok');
   check('block: details show difficulty 14,484.162 and work', /14,484\.162/.test(det) && /hashes/.test(det), det.replace(/\n/g, ' / ').slice(0, 200));

@@ -17,9 +17,10 @@ Plain explanations of the terms used in Assay and its docs.
 - **Chainwork**: The total proof of work behind a block, added up from the genesis
   block. Bitcoin Core reports it in hexadecimal. Nodes follow the chain
   with the most of it.
-- **Coinbase transaction**: The first transaction in each block. It creates new bitcoin for the
-  miner, so it has no real inputs. (Unrelated to the company with the
-  same name.)
+- **Coinbase transaction**: The first transaction in each block. It creates new
+  bitcoin for the miner, so it has no real inputs. Since block 227,931 (BIP34)
+  it also records the block's height. (Unrelated to the company with the same
+  name.)
 - **Confirmations**: How many blocks have been mined since a block, counting that block
   itself. The more there are, the harder it is to reverse.
 - **CORS**: A web security rule. A server must send an `Access-Control-Allow-Origin`

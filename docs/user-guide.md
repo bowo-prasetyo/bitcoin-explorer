@@ -207,6 +207,9 @@ On a block page:
   height, so the proof of work above was as hard as Bitcoin requires. If the earlier headers are already saved in your browser, the
   difficulty is also traced all the way back to the first block. If not,
   click **Trace back to the genesis block (N headers)**.
+- **Height.** From block 227,931 on, the block's height is the one the
+  block itself records in its first transaction, so it can't be shown
+  under the wrong number.
 - **Transaction list.** Shown above each page of 25 transactions. It
   proves that the complete list matches the block header, so no
   transaction is missing, added or out of order.
