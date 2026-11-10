@@ -79,8 +79,10 @@ Every check, with exactly what it proves and doesn't, is in
   input and output. Inputs link to the transaction that created the coins.
 - **Addresses:** balance, pending change, totals, and history with each
   transaction's effect on the balance.
-- **Charts:** pending-transaction count over time, recorded by your
-  browser while the page is open.
+- **Charts:** Bitcoin's difficulty, average block time and estimated
+  hashrate since 2009, drawn only from headers your browser has checked
+  (with a table and CSV download); plus the pending-transaction count,
+  recorded while the page is open.
 - **Providers:** health of each data provider, whether they agree, live
   updates on/off, and a form to **use your own node**.
 - **Works offline-first:** the last copy of each page shows instantly,
@@ -188,6 +190,7 @@ of every browser module, on every push and pull request.
 | `live.js` | Live "new block" notifications over WebSocket |
 | `consensus.js` | Compares chain tips across providers |
 | `distrust.js` | Leaves providers that sent an invalid tip out of lookups, and when to let them back in |
+| `history.js` | Chart series (difficulty, block time, hashrate) from checked headers |
 | `chainwork.js` | Total work behind a tip, from one header per difficulty period |
 | `inputs.js` | Checks inputs against the raw transactions they spend |
 | `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |

@@ -33,7 +33,7 @@ The header is the same on every page:
 |---|---|
 | **Assay** logo | Back to the home page. |
 | **Search box** | On every page except home, which has its own larger one. See [Search](#2-search). |
-| **Charts** | A chart of how many transactions are waiting to be confirmed. |
+| **Charts** | Bitcoin's difficulty, block times and estimated hashrate since 2009, checked by your browser; and how many transactions are waiting right now. See [task 4.7](#47-see-bitcoins-history). |
 | **Providers** | Which servers Assay asks for data, whether they agree, and where to add your own node. |
 | **Help** | Opens this guide. |
 | **● Live** / **Polling** | How Assay learns about new blocks. See [Live and polling](#live-and-polling). |
@@ -273,6 +273,35 @@ Address data is **not verified**. Proving a balance needs a full list of
 every unspent coin, which only a full node has. To avoid trusting a
 public provider, [use your own node](#5-use-your-own-node).
 
+### 4.7 See Bitcoin's history
+
+Click **Charts** in the header. **Bitcoin since 2009** draws three charts,
+one point per *difficulty period* (2,016 blocks, about two weeks):
+
+| Chart | What it shows |
+|---|---|
+| **Difficulty** | How much harder than the first blocks it is to find a block. Log scale: each line up is ten times harder. |
+| **Average time between blocks** | Per period, against Bitcoin's 10-minute target (dashed line). Faster periods are followed by a higher difficulty, and slower ones by a lower one. |
+| **Estimated hashrate** | The computing power the difficulty and pace imply. An estimate: miners set block times, which can be off by up to about two hours. |
+
+Everything comes from the first and last block header of each period,
+the same headers as the difficulty check in [task 4.4](#44-check-the-whole-chain).
+Your browser checks them all first: the charts appear only under a green
+✓ *Difficulty traced back to the genesis block*. If that check fails,
+no charts are drawn.
+
+The first time, click **Download and check N headers** (about 75 KB).
+If you have already used **Add up the total work**, the headers are
+saved and the charts appear straight away. After that, only new headers
+are downloaded.
+
+**Show as a table** lists every period with a link to its first block,
+and **Download as CSV** saves the numbers.
+
+Below, **Mempool transaction count** is recorded by your browser while
+the page is open. It isn't history: Assay can't check past mempool
+contents, so it doesn't show a provider's.
+
 ## 5. Use your own node
 
 You can point Assay at an *Esplora* API that you run or trust. Common
@@ -375,7 +404,7 @@ and work offline. Nothing is sent anywhere.
 | What | Kept for |
 |---|---|
 | Recently viewed data (blocks, transactions, addresses, mempool) | Up to 7 days, at most 500 entries |
-| Block headers used by the difficulty and total-work checks (about 80 bytes each) | Until you clear them |
+| Block headers used by the difficulty and total-work checks and the history charts (about 80 bytes each) | Until you clear them |
 | The last 50 mempool-chart samples | Until pruned with the rest of the cache |
 | Your endpoint, live updates on/off, total-work opt-in, the last provider that worked | Until you change or clear them |
 | Providers left out of lookups for sending an invalid chain tip, with the reason | Until a tip check passes, or 24 hours |
