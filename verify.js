@@ -298,46 +298,70 @@ export async function verifyBlockDifficulty(block, header, tipHeight = null) {
 // BLOCK HEIGHT (BIP34: written in the coinbase)
 // =====================================================
 
+// The block's first transaction, proved to be its coinbase: it hashes to
+// its txid, is a coinbase by Bitcoin's rule, and a Merkle proof puts it at
+// position 0 under the checked header's `merkleRoot`. Resolves to
+// { txid, raw, depth, checks }: `depth` is the length of that proof, the
+// depth of every transaction in the block (see verifyTransactionInclusion).
+// Throws when data can't be fetched.
+async function loadCoinbase(blockHash, merkleRoot) {
+  const txid = await getBlockTxidAt(blockHash, 0);
+  const [raw, proof] = await Promise.all([getTxHex(txid), getMerkleProof(txid)]);
+
+  const hashOk = (await txidFromRaw(raw)) === txid;
+  const { coinbase } = parseTransaction(raw);
+  const { root, mutated } = await checkMerkleProof(txid, proof.merkle, proof.pos);
+
+  return {
+    txid,
+    raw,
+    depth: proof.merkle.length,
+    checks: [
+      {
+        label: "The block's first transaction is a coinbase and hashes to its txid",
+        ok: hashOk && coinbase
+      },
+      {
+        label: 'A Merkle proof puts it first in this block',
+        ok: proof.pos === 0 && !mutated && root === merkleRoot
+      }
+    ]
+  };
+}
+
+// BIP34: the check that a proved coinbase commits to `height`, or null
+// before BIP34_HEIGHT, where blocks carry no height.
+function heightCheck(coinbaseRaw, height) {
+  const h = checkCoinbaseHeight(coinbaseRaw, height);
+
+  if (!h.applies) {
+    return null;
+  }
+
+  const fmt = n => n.toLocaleString('en-US');
+
+  return {
+    claimed: h.claimed,
+    label: h.ok || h.claimed === null
+      ? `Its coinbase commits to height ${fmt(height)} (BIP34)`
+      : `Its coinbase commits to height ${fmt(height)} (BIP34): it says ${fmt(h.claimed)}`,
+    ok: h.ok
+  };
+}
+
 // Does block `blockHash`, whose verified header has `merkleRoot`, commit
-// to `height` in its coinbase? The coinbase must hash to its txid, be a
-// coinbase by Bitcoin's rule, and sit at position 0 under the header's
-// Merkle root; then its scriptSig must start with the height (BIP34).
-// Resolves to { applies: false } before BIP34_HEIGHT, else
-// { applies: true, checks, claimed }. Throws when data can't be fetched.
+// to `height` in its coinbase (BIP34)? Resolves to { applies: false }
+// before BIP34_HEIGHT, else { applies: true, checks, claimed }. Throws
+// when data can't be fetched.
 export async function checkHeightInCoinbase(blockHash, height, merkleRoot) {
   if (height < BIP34_HEIGHT) {
     return { applies: false };
   }
 
-  const txid = await getBlockTxidAt(blockHash, 0);
-  const [raw, proof] = await Promise.all([getTxHex(txid), getMerkleProof(txid)]);
+  const cb = await loadCoinbase(blockHash, merkleRoot);
+  const { claimed, ...check } = heightCheck(cb.raw, height);
 
-  const hashOk = (await txidFromRaw(raw)) === txid;
-  const { root, mutated } = await checkMerkleProof(txid, proof.merkle, proof.pos);
-  const atZero = proof.pos === 0 && !mutated && root === merkleRoot;
-  const h = checkCoinbaseHeight(raw, height);
-  const fmt = n => n.toLocaleString('en-US');
-
-  return {
-    applies: true,
-    claimed: h.claimed,
-    checks: [
-      {
-        label: "The block's first transaction is a coinbase and hashes to its txid",
-        ok: hashOk && h.coinbase
-      },
-      {
-        label: 'A Merkle proof puts it first in this block',
-        ok: atZero
-      },
-      {
-        label: h.ok || h.claimed === null
-          ? `Its coinbase commits to height ${fmt(height)} (BIP34)`
-          : `Its coinbase commits to height ${fmt(height)} (BIP34): it says ${fmt(h.claimed)}`,
-        ok: h.ok
-      }
-    ]
-  };
+  return { applies: true, claimed, checks: [...cb.checks, check] };
 }
 
 export { BIP34_HEIGHT };
@@ -981,35 +1005,58 @@ export async function verifyTransactionInclusion(tx) {
     const height = tx.status.block_height;
     const h = height.toLocaleString('en-US');
 
-    // Two independent ways to tie this block to its height: the other
-    // providers have it there, and (since BIP34) the block itself says so
-    // in its coinbase, so a provider can't misstate where a real block is.
-    const [atHeight, inCoinbase] = await Promise.all([
+    // The block's coinbase, proved first in the block, anchors two checks:
+    //   - Depth. Every transaction in a Merkle tree is a leaf at the same
+    //     depth, so this proof must be exactly as long as the coinbase's.
+    //     A shorter one ends inside the tree: its "transaction" is a
+    //     64-byte pair of hashes passed off as one (the 64-byte
+    //     transaction weakness, which BIP54 proposes to forbid).
+    //   - Height (since BIP34): the block records it in its coinbase.
+    // And the other providers must have this block at this height.
+    const [atHeight, cb] = await Promise.all([
       checkBlockAtHeight(height, tx.status.block_hash),
-      checkHeightInCoinbase(tx.status.block_hash, height, pow.header.merkleRoot)
-        .catch(err => ({ applies: true, error: err }))
+      loadCoinbase(tx.status.block_hash, pow.header.merkleRoot)
+        .catch(err => ({ error: err }))
     ]);
 
     checks.push(atHeight.check);
 
     let pending = atHeight.pending;
+    let cbChecks = [];
 
-    if (inCoinbase.applies && inCoinbase.error) {
-      pending = pending || `Couldn't fetch block ${h}'s coinbase to check its height`;
-    } else if (inCoinbase.applies) {
-      checks.push(...inCoinbase.checks);
+    if (cb.error) {
+      pending = pending || `Couldn't fetch block ${h}'s coinbase to check the proof against it`;
+    } else {
+      cbChecks = [
+        ...cb.checks,
+        proof.pos === 0
+          ? { label: 'This transaction is the one first in the block', ok: cb.txid === tx.txid }
+          : {
+              label: `The proof is as deep as the coinbase's (${cb.depth} hashes): it ends at a transaction, not inside the tree`,
+              ok: proof.merkle.length === cb.depth
+            }
+      ];
+
+      const hc = heightCheck(cb.raw, height);
+      if (hc) {
+        const { claimed, ...check } = hc;
+        cbChecks.push(check);
+      }
+
+      checks.push(...cbChecks);
     }
 
     const disagree = !atHeight.check.ok && !atHeight.pending;
 
-    if (disagree || (inCoinbase.checks && !allOk(inCoinbase.checks))) {
+    if (disagree || !allOk(cbChecks)) {
       return result('fail', 'Inclusion check FAILED', checks, {
         facts,
         note: disagree
           ? 'Providers disagree about this block. It may have just been ' +
             'replaced, or a provider is showing you a block that is not on ' +
             'the chain.'
-          : "The block doesn't commit to the height shown: it isn't block " + h + '.'
+          : "The proof or the block's coinbase doesn't add up: this isn't " +
+            `a transaction in block ${h}.`
       });
     }
 

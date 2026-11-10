@@ -9,6 +9,13 @@ against the live data providers.
 
 ### Added
 
+- **Merkle-proof depth:** transaction inclusion checks that the proof is
+  exactly as deep as the proof for the block's coinbase (downloaded raw,
+  hashing to its txid, proved first in the block). Every transaction is
+  a leaf at the same depth, so a shorter proof would end inside the tree,
+  with a pair of hashes passed off as a 64-byte transaction. At position
+  0 the transaction must be the coinbase itself. This adds three small
+  requests per confirmed transaction, now also before block 227,931.
 - **Block height (BIP34):** from block 227,931 on, block pages check that
   the height shown is the one the block records in its coinbase, and
   transaction inclusion checks it for the transaction's block. The

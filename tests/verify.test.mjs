@@ -136,6 +136,9 @@ const failed = (r, label) => r.checks.find(c => c.label.includes(label))?.ok ===
 function serveGenesisInclusion() {
   serve(`/block/${G_HASH}/header`, G_HEADER);
   serve(`/tx/${G_TXID}/merkle-proof`, { block_height: 0, merkle: [], pos: 0 });
+  // Its block's coinbase (itself), which inclusion checks the proof against.
+  serve(`/block/${G_HASH}/txid/0`, G_TXID);
+  serve(`/tx/${G_TXID}/hex`, G_RAW);
 }
 
 test('inclusion: passes when every provider has the block at that height', async () => {
@@ -160,13 +163,14 @@ test('inclusion: a valid-work block another provider does not have at that heigh
 });
 
 test('inclusion: a block no other provider can confirm is not a pass', async () => {
+  // Before BIP34, so only the provider check can tie the block to a height.
   serveGenesisInclusion();
-  const lie = { ...G_TX, status: { confirmed: true, block_height: 900123, block_hash: G_HASH } };
-  serve(`/tx/${G_TXID}/merkle-proof`, { block_height: 900123, merkle: [], pos: 0 });
-  serve('/block-height/900123', G_HASH, ['mempool.space']);
+  const lie = { ...G_TX, status: { confirmed: true, block_height: 200000, block_hash: G_HASH } };
+  serve(`/tx/${G_TXID}/merkle-proof`, { block_height: 200000, merkle: [], pos: 0 });
+  serve('/block-height/200000', G_HASH, ['mempool.space']);
   const r = await V.verifyTransactionInclusion(lie);
   assert.equal(r.state, 'error');
-  assert.match(r.title, /Only 1 of 2 providers could confirm block 900,123/);
+  assert.match(r.title, /Only 1 of 2 providers could confirm block 200,000/);
 });
 
 // ---- Transaction contents and inputs: the coinbase flag ----
@@ -382,4 +386,91 @@ test('checkHeightInCoinbase: an honest post-BIP34 block passes every step', asyn
   const r = await V.checkHeightInCoinbase(BLOCK.id, 900123, ROOT);
   assert.equal(r.applies, true);
   assert.ok(r.checks.every(c => c.ok), JSON.stringify(r.checks));
+});
+
+// ---- Merkle-proof depth: the 64-byte transaction weakness ----
+
+// Real block 100,000: four transactions, so every proof is 2 hashes deep.
+const K_HASH = '000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506';
+const K_HEADER =
+  '0100000050120119172a610421a6c3011dd330d9df07b63616c2cc1f1cd00200000000006657a9252a' +
+  'acd5c0b2940996ecff952228c3067cc38d4885efb5a4ac4247e9f337221b4d4c86041b0f2b5710';
+const [K_CB, K_T1, K_T2, K_T3] = [
+  '8c14f0db3df150123e6f3dbbf30f8b955a8249b62ac1d1ff16284aefa3d06d87',
+  'fff2525b8931402dd09222c50775608f75787bd2b87e56995a7bdd30f79702c4',
+  '6359f0868171b1d194cbee1af2f16ea598ae8fad666d9b012c8ed2b79a236ec4',
+  'e9a66845e05d5abc0ad04ec80f774a7e585c6e8db975962d069a522137b80c1d'
+];
+// Its coinbase, raw (hashes to K_CB).
+const K_CB_RAW =
+  '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff' +
+  '08044c86041b020602ffffffff0100f2052a010000004341041b0e8c2567c12536aa13357b79a073dc' +
+  '4444acb83c4ec7a0e2f99dd7457516c5817242da796924ca4e99947d087fedf9ce467cb9f7c6287078' +
+  'f801df276fdf84ac00000000';
+
+const { merkleRootFromProof } = await import('../spv.js');
+const pair = (left, right) => merkleRootFromProof(left, [right], 0); // inner node
+const LEFT = await pair(K_CB, K_T1);   // hash of (coinbase, tx 1)
+const RIGHT = await pair(K_T2, K_T3);  // hash of (tx 2, tx 3)
+
+function serveBlock100000() {
+  serve(`/block/${K_HASH}/header`, K_HEADER);
+  serve('/block-height/100000', K_HASH);
+  serve(`/block/${K_HASH}/txid/0`, K_CB);
+  serve(`/tx/${K_CB}/hex`, K_CB_RAW);
+  serve(`/tx/${K_CB}/merkle-proof`, { block_height: 100000, merkle: [K_T1, RIGHT], pos: 0 });
+}
+const confirmedIn100000 = txid =>
+  ({ txid, status: { confirmed: true, block_height: 100000, block_hash: K_HASH } });
+
+test('depth: a real proof as deep as the coinbase passes', async () => {
+  serveBlock100000();
+  serve(`/tx/${K_T2}/merkle-proof`, { block_height: 100000, merkle: [K_T3, LEFT], pos: 2 });
+  const r = await V.verifyTransactionInclusion(confirmedIn100000(K_T2));
+  assert.equal(r.state, 'ok', JSON.stringify(r.checks));
+  assert.ok(r.checks.some(c => c.ok && /as deep as the coinbase's \(2 hashes\)/.test(c.label)));
+});
+
+test("depth: an inner node of the tree passed off as a transaction FAILS", async () => {
+  // The "transaction" is the pair (tx 2, tx 3): 64 bytes that hash to
+  // RIGHT. Its one-hash proof reaches the real root of a real block with
+  // real proof of work, and every provider has that block there.
+  serveBlock100000();
+  serve(`/tx/${RIGHT}/merkle-proof`, { block_height: 100000, merkle: [LEFT], pos: 1 });
+  const r = await V.verifyTransactionInclusion(confirmedIn100000(RIGHT));
+  assert.equal(r.state, 'fail');
+  assert.ok(r.checks.find(c => /Merkle proof leads from this txid/.test(c.label)).ok);
+  assert.ok(failed(r, "as deep as the coinbase's"), JSON.stringify(r.checks));
+});
+
+test("depth: at position 0 the transaction must be the block's coinbase", async () => {
+  // The pair (coinbase, tx 1) claimed as the block's first transaction.
+  serveBlock100000();
+  serve(`/tx/${LEFT}/merkle-proof`, { block_height: 100000, merkle: [RIGHT], pos: 0 });
+  const r = await V.verifyTransactionInclusion(confirmedIn100000(LEFT));
+  assert.equal(r.state, 'fail');
+  assert.ok(failed(r, 'This transaction is the one first in the block'));
+});
+
+test("depth: the coinbase can't be swapped for a shallower stand-in", async () => {
+  // The provider names the inner node LEFT as the coinbase, with a
+  // one-hash proof, so that a one-hash proof elsewhere would look right.
+  serveBlock100000();
+  serve(`/block/${K_HASH}/txid/0`, LEFT);
+  serve(`/tx/${LEFT}/hex`, K_CB_RAW);
+  serve(`/tx/${LEFT}/merkle-proof`, { block_height: 100000, merkle: [RIGHT], pos: 0 });
+  serve(`/tx/${RIGHT}/merkle-proof`, { block_height: 100000, merkle: [LEFT], pos: 1 });
+  const r = await V.verifyTransactionInclusion(confirmedIn100000(RIGHT));
+  assert.equal(r.state, 'fail');
+  assert.ok(failed(r, 'is a coinbase and hashes to its txid'));
+});
+
+test("depth: a coinbase that can't be fetched leaves inclusion grey, never green", async () => {
+  serveBlock100000();
+  routes['blockstream.info'][`/block/${K_HASH}/txid/0`] = undefined;
+  routes['mempool.space'][`/block/${K_HASH}/txid/0`] = undefined;
+  serve(`/tx/${K_T2}/merkle-proof`, { block_height: 100000, merkle: [K_T3, LEFT], pos: 2 });
+  const r = await V.verifyTransactionInclusion(confirmedIn100000(K_T2));
+  assert.equal(r.state, 'error');
+  assert.match(r.title, /Couldn't fetch block 100,000's coinbase/);
 });
