@@ -112,6 +112,16 @@ Since phase 3, work ships as individual features:
   the tip and of pending transactions, is opened only while needed, backs
   off politely, and falls back to polling.
 
+### Everyday convenience ✅
+
+- Search from every page, including `bitcoin:` payment links.
+- Confirmations on transaction pages; copy buttons for hashes, txids and
+  addresses; a "Page not found" view instead of a blank page.
+- One summary line per page for all its verification badges, which is
+  also what screen readers announce.
+- Jargon explained in place, from an in-app glossary kept identical to
+  `docs/glossary.md`.
+
 ### Next ideas
 
 - Link every header inside each period. That needs all ~925,000 headers

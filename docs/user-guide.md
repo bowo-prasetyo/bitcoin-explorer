@@ -32,10 +32,14 @@ The header is the same on every page:
 | Item | What it does |
 |---|---|
 | **Assay** logo | Back to the home page. |
+| **Search box** | On every page except home, which has its own larger one. See [Search](#2-search). |
 | **Charts** | A chart of how many transactions are waiting to be confirmed. |
 | **Providers** | Which servers Assay asks for data, whether they agree, and where to add your own node. |
 | **Help** | Opens this guide. |
 | **● Live** / **Polling** | How Assay learns about new blocks. See [Live and polling](#live-and-polling). |
+
+The footer links to the **Glossary**, this guide, [What your browser
+verifies](verification.md) and the source code.
 
 The home page has these cards, top to bottom:
 
@@ -52,8 +56,9 @@ The home page has these cards, top to bottom:
 
 ## 2. Search
 
-Type into the search box on the home page and press **Enter** (or click
-**Search**). You can enter:
+Type into the search box and press **Enter** (or click **Search**). It's
+on the home page and at the top of every other page. Press **Esc** to
+clear it. You can enter:
 
 | You type | Example | Assay opens |
 |---|---|---|
@@ -61,6 +66,7 @@ Type into the search box on the home page and press **Enter** (or click
 | A block hash (64 hex characters) | `000000000019d6…` | That block |
 | A transaction id (64 hex characters) | `4a5e1e4baab8…` | That transaction |
 | A mainnet address | `1A1zP1…`, `bc1q…`, `bc1p…` | That address |
+| A payment link from a wallet or QR code | `bitcoin:bc1q…?amount=0.1` | The address in it |
 
 Assay checks what you typed **before** sending anything, and tells you
 what is wrong instead of failing silently:
@@ -72,11 +78,48 @@ what is wrong instead of failing silently:
 | *N is too large to be a block height.* | Heights are much smaller numbers. |
 | *There is no block at height N yet.* | That block hasn't been mined yet. |
 | *Not a block height, block hash, transaction id or Bitcoin address.* | Check for typos. A `bc1` address must be all lower case or all upper case, not mixed. |
+| *That bitcoin: link has no valid address in it.* | Some links carry only a Lightning invoice, or a damaged address. Copy the address on its own. |
+
+A link to a page that doesn't exist, for example one that was cut short
+when it was copied, shows **Page not found**. Use the search box from
+there.
+
+### Copying
+
+Next to each block hash, transaction id and address at the top of its
+page is a **Copy** button. It changes to *Copied* for a moment.
+
+### Unfamiliar words
+
+Labels with a dotted underline, such as **Confirmations**, **Size** or
+**Fee rate**, explain themselves: tap or click one to see what it
+means. **All terms** opens the full glossary inside Assay. Press **Esc**
+or tap elsewhere to close the explanation.
 
 ## 3. Reading the verification badges
 
 Block and transaction pages show **badges**. Each badge is the result of
 one check that your browser ran itself, using raw data and cryptography.
+
+### The summary line
+
+A **summary line** in bold, at the top of each block and transaction
+page, sums up every badge on the page so you don't have to read them all:
+
+| Summary | Meaning |
+|---|---|
+| ✓ *All 3 checks passed in your browser* | Every check passed. |
+| ✗ *1 of 3 checks FAILED: this data doesn't add up.* | At least one check failed. Read the red badge below it. |
+| ! *2 of 3 checks passed · 1 couldn't run* | Some checks couldn't run. That isn't a pass, and it isn't a failure. |
+| – *… · 1 waiting for you to start it* | A check that downloads a lot waits for your click, for example **Trace back to the genesis block**. |
+| … *Checking in your browser… (1 of 3 done)* | Checks are still running. |
+
+Checks that don't apply, such as spent amounts on a *coinbase
+transaction*, are listed as *not applicable* and don't count. Screen
+readers announce the summary once the checks finish, rather than each
+badge.
+
+### Each badge
 
 | Badge | Colour | Meaning |
 |---|---|---|
@@ -120,12 +163,13 @@ address's coins are still unspent. The full list is in
    - *in block 870,123* means it is confirmed. The block number is a link.
    - *waiting in the mempool* means it is not confirmed yet. The page
      updates by itself when it confirms.
-3. Check the **Transaction inclusion** badge. A green ✓ ("Inclusion in
+3. Read **Confirmations**: how many blocks have been mined since, counting
+   its own block. Many people wait for 6. The count goes up by itself
+   while the page is open.
+4. Check the **Transaction inclusion** badge. A green ✓ ("Inclusion in
    block N verified") means your browser proved that this exact
    transaction is inside that block, and that the block has valid proof
    of work.
-4. To see how many blocks have been built on top, click the block number
-   and read **Confirmations**. Many people wait for 6.
 
 ### 4.2 Check a transaction's amounts and fee
 
