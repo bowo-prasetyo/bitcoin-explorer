@@ -36,6 +36,15 @@ const G_TX = { txid: G_TXID, fee: 0, weight: 816,
   vin: [{ is_coinbase: true, txid: '0'.repeat(64), vout: 4294967295 }],
   vout: [{ value: 5000000000, scriptpubkey: G_SPK, scriptpubkey_type: 'p2pk' }] };
 
+// Block 100,000's raw coinbase (hashes to K_TXIDS[0]).
+const K_CB_RAW = '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff08044c86041b020602ffffffff0100f2052a010000004341041b0e8c2567c12536aa13357b79a073dc4444acb83c4ec7a0e2f99dd7457516c5817242da796924ca4e99947d087fedf9ce467cb9f7c6287078f801df276fdf84ac00000000';
+// Inner nodes of block 100,000's Merkle tree, display order.
+const dsha = hex => require('crypto').createHash('sha256').update(require('crypto').createHash('sha256').update(Buffer.from(hex, 'hex')).digest()).digest();
+const rev = hex => hex.match(/../g).reverse().join('');
+const node = (a, b) => Buffer.from(dsha(rev(a) + rev(b))).reverse().toString('hex');
+const K_LEFT = node(K_TXIDS[0], K_TXIDS[1]);
+const K_RIGHT = node(K_TXIDS[2], K_TXIDS[3]);
+
 const mkTxStub = (txid, i) => ({ txid, fee: 0, weight: 800, vin: i === 0 ? [{ is_coinbase: true }] : [{ txid: 'aa'.repeat(32), vout: 0, prevout: { value: 1 } }], vout: [{ value: 1000, scriptpubkey_type: 'p2pkh' }], status: { confirmed: true } });
 
 // Shared core data (served by every provider)
@@ -53,6 +62,7 @@ function core(scenario) {
     [`/block/${G_HASH}`]: G_BLOCK,
     [`/block/${G_HASH}/header`]: G_HEADER,
     [`/block/${G_HASH}/txids`]: [G_TXID],
+    [`/block/${G_HASH}/txid/0`]: G_TXID,
     [`/block/${G_HASH}/txs/0`]: [G_TX],
     [`/block/${G_HASH}/status`]: { in_best_chain: true, height: 0 },
     [`/tx/${G_TXID}`]: G_TX,
@@ -70,6 +80,17 @@ function core(scenario) {
   }
   if (scenario === 'fake-amount') {
     m[`/tx/${G_TXID}`] = { ...G_TX, vout: [{ ...G_TX.vout[0], value: 2100000000000000 }] };
+  }
+  if (scenario === 'inner-node') {
+    // A "transaction" that is really the pair (tx 2, tx 3) of block
+    // 100,000: its short proof reaches the real root.
+    m[`/tx/${K_RIGHT}`] = { txid: K_RIGHT, fee: 0, weight: 256,
+      status: { confirmed: true, block_height: 100000, block_hash: K_HASH, block_time: 1293623863 },
+      vin: [], vout: [] };
+    m[`/tx/${K_RIGHT}/merkle-proof`] = { block_height: 100000, merkle: [K_LEFT], pos: 1 };
+    m[`/block/${K_HASH}/txid/0`] = K_TXIDS[0];
+    m[`/tx/${K_TXIDS[0]}/hex`] = K_CB_RAW;
+    m[`/tx/${K_TXIDS[0]}/merkle-proof`] = { block_height: 100000, merkle: [K_TXIDS[1], K_RIGHT], pos: 0 };
   }
   if (scenario === 'fake-txlist') {
     m[`/block/${K_HASH}/txids`] = [K_TXIDS[0], K_TXIDS[2], K_TXIDS[1], K_TXIDS[3]];
@@ -202,6 +223,16 @@ module.exports = async function ({ chromium, BASE, check }) {
   await waitBadges(page, 2);
   b = await badgeTexts(page);
   check('tx: block not at that height for another provider -> inclusion FAILED',
+    b.some(t => /verify-fail :: Inclusion check FAILED/.test(t)), b.join(' | '));
+  scenario = 'honest';
+
+  // ---- A pair of hashes from inside the tree passed off as a transaction
+  scenario = 'inner-node';
+  page = await fresh();
+  await page.goto(BASE + '#/tx/' + K_RIGHT);
+  await waitBadges(page, 2);
+  b = await badgeTexts(page);
+  check('tx: inner Merkle node as a "transaction" -> inclusion FAILED (proof too short)',
     b.some(t => /verify-fail :: Inclusion check FAILED/.test(t)), b.join(' | '));
   scenario = 'honest';
 

@@ -180,7 +180,14 @@ the full *UTXO set*, which only full nodes keep.
   there).
 - That header passes the [proof-of-work checks](#block-proof-of-work).
 - The proof is for the block shown.
-- From block 227,931 on, the block records that height in its coinbase,
+- The proof is exactly as deep as the proof for the block's *coinbase
+  transaction*, which is downloaded raw, hashes to its txid, and is
+  proved to be first in the block. Every transaction is a leaf at the
+  same depth of the Merkle tree, so a shorter proof ends inside the
+  tree: its "transaction" would be a pair of hashes passed off as a
+  64-byte transaction. At position 0, the transaction must be that
+  coinbase itself.
+- From block 227,931 on, that coinbase records the block's height,
   as in the [block height](#block-height) check.
 - Every provider has that block at that height. Each is asked
   separately. A provider with a different block there makes the check
