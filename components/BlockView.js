@@ -27,6 +27,8 @@ import { blockTitle } from '../titles.js';
 
 import {
   verifyBlockDifficulty,
+  verifyBlockHeight,
+  BIP34_HEIGHT,
   verifyDifficultyHistory,
   historyHeaderCount,
   verifyBlockHeader,
@@ -96,6 +98,7 @@ export default {
         </div>
       </verify-badge>
       <verify-badge v-if="block && historyCheck" :result="historyCheck"></verify-badge>
+      <verify-badge v-if="recordsHeight" :result="heightCheck"></verify-badge>
 
     </div>
 
@@ -173,6 +176,7 @@ export default {
 
       headerCheck: null,
       difficultyCheck: null,
+      heightCheck: null,
       historyCheck: null,
       historyOffer: 0,
       historyRunning: false,
@@ -184,6 +188,11 @@ export default {
   },
 
   computed: {
+    // Blocks since BIP34 write their height into their coinbase.
+    recordsHeight() {
+      return !!this.block && this.block.height >= BIP34_HEIGHT;
+    },
+
     // Every check on the page, for <verify-summary>. The transaction list
     // is checked in the second card, once its page of transactions loads.
     summaryResults() {
@@ -195,6 +204,11 @@ export default {
         results.push(null);
       } else if (this.historyOffer) {
         results.push({ state: 'na', needsConfirm: true });
+      }
+
+      // Blocks before BIP34 don't record their height: no badge.
+      if (this.recordsHeight) {
+        results.push(this.heightCheck);
       }
 
       const txsFailed = !this.txs.length && !!this.txsStatus.error;
@@ -274,8 +288,13 @@ export default {
       this.verifiedBlockId = this.block.id;
       this.headerCheck = null;
       this.difficultyCheck = null;
+      this.heightCheck = null;
       this.headerCheck = await verifyBlockHeader(this.block);
       this.verifyTxList();
+
+      verifyBlockHeight(this.block, this.headerCheck.header).then(r => {
+        if (this.verifiedBlockId === this.block?.id) this.heightCheck = r;
+      });
 
       this.difficultyCheck = await verifyBlockDifficulty(
         this.block,

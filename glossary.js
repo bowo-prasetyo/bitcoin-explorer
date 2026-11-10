@@ -48,7 +48,7 @@ export const GLOSSARY = [
   {
     id: 'coinbase-transaction',
     term: "Coinbase transaction",
-    text: "The first transaction in each block. It creates new bitcoin for the miner, so it has no real inputs. (Unrelated to the company with the same name.)"
+    text: "The first transaction in each block. It creates new bitcoin for the miner, so it has no real inputs. Since block 227,931 (BIP34) it also records the block's height. (Unrelated to the company with the same name.)"
   },
   {
     id: 'confirmations',

@@ -16,6 +16,7 @@ For how to read the badges on screen, see the
 | [Block proof of work](#block-proof-of-work) | Block pages | Always |
 | [Block difficulty](#block-difficulty) | Block pages | Always |
 | [Difficulty history](#difficulty-history) | Block pages; home page | Automatically once headers are saved; otherwise on request |
+| [Block height](#block-height) | Block pages | From block 227,931 |
 | [Block transactions](#block-transactions) | Block pages | Always |
 | [Transaction contents](#transaction-contents) | Transaction pages | Always |
 | [Input amounts and fee](#input-amounts-and-fee) | Transaction pages | Automatically up to 25 spent transactions; above that, on request |
@@ -95,6 +96,29 @@ are set by miners, so single periods are approximate.
 would need every header ever mined: about 80 bytes for each block in the
 chain.
 
+## Block height
+
+**Checks**, for blocks from 227,931 on, that the height shown is the one
+the block itself records. Since then (*BIP34*) every block's *coinbase
+transaction* must start with the block's height, exactly as Bitcoin Core
+writes it.
+
+- The block's first transaction is downloaded raw, hashes to its txid,
+  and is a coinbase (one input that spends no earlier output).
+- A Merkle proof puts it at position 0 under the block's checked header.
+- Its scriptSig starts with the height, in Bitcoin Core's exact
+  encoding (`CScript() << height`; a longer encoding of the same number
+  fails, as it does in Core).
+
+The coinbase is covered by the block's proof of work, so a provider
+can't show a real block under the wrong height, which would also change
+its confirmations.
+
+**Doesn't prove** anything for a block someone makes up: its miner can
+write any height. That is what the difficulty and provider checks are
+for. Blocks before 227,931 don't record their height, so they get no
+height badge.
+
 ## Block transactions
 
 **Checks**
@@ -156,6 +180,8 @@ the full *UTXO set*, which only full nodes keep.
   there).
 - That header passes the [proof-of-work checks](#block-proof-of-work).
 - The proof is for the block shown.
+- From block 227,931 on, the block records that height in its coinbase,
+  as in the [block height](#block-height) check.
 - Every provider has that block at that height. Each is asked
   separately. A provider with a different block there makes the check
   **fail**. If no second provider can confirm it yet, for example

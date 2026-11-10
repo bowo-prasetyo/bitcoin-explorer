@@ -17,7 +17,11 @@ import {
   computeMerkleRootChecked,
   checkMerkleProof,
   validTargetFromBits,
-  blockHashFromHeader
+  blockHashFromHeader,
+  bip34Prefix,
+  heightInScriptSig,
+  checkCoinbaseHeight,
+  BIP34_HEIGHT
 } from '../spv.js';
 
 // Block 100000: four transactions.
@@ -197,7 +201,11 @@ test('txid from raw genesis coinbase', async () => {
 
   const tx = parseTransaction(GENESIS_RAW);
   assert.equal(tx.segwit, false);
-  assert.deepEqual(tx.vin, [{ txid: '00'.repeat(32), vout: 0xffffffff }]);
+  assert.equal(tx.vin.length, 1);
+  assert.equal(tx.vin[0].txid, '00'.repeat(32));
+  assert.equal(tx.vin[0].vout, 0xffffffff);
+  // "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
+  assert.match(tx.vin[0].scriptSig, /^04ffff001d0104455468652054696d6573/);
   assert.equal(tx.vout.length, 1);
   assert.equal(tx.vout[0].value, 5000000000);
   assert.match(tx.vout[0].scriptpubkey, /^4104678afdb0/);
@@ -272,4 +280,73 @@ test('parseTransaction computes BIP141 weight', () => {
   const g = parseTransaction(GENESIS_RAW);
   assert.equal(g.size, 204);
   assert.equal(g.weight, 816);
+});
+
+// ---------------------------------------------------------------
+// BIP34: height in the coinbase
+// ---------------------------------------------------------------
+
+// A minimal coinbase: one input spending the null outpoint, with this
+// scriptSig, and one empty output.
+const coinbaseWith = scriptSig =>
+  '01000000' + '01' + '00'.repeat(32) + 'ffffffff' +
+  (scriptSig.length / 2).toString(16).padStart(2, '0') + scriptSig + 'ffffffff' +
+  '01' + '0000000000000000' + '00' + '00000000';
+
+test('bip34Prefix is CScript() << height, as Bitcoin Core serialises it', () => {
+  assert.equal(BIP34_HEIGHT, 227931);
+  // The activation block's own coinbase starts with 03 5b7a03.
+  assert.equal(bip34Prefix(227931), '035b7a03');
+  assert.equal(bip34Prefix(900123), '031bbc0d');
+  // Minimal CScriptNum: an extra 0x00 when the top bit is set.
+  assert.equal(bip34Prefix(127), '017f');
+  assert.equal(bip34Prefix(128), '028000');
+  assert.equal(bip34Prefix(0x7fffff), '03ffff7f');
+  assert.equal(bip34Prefix(0x800000), '0400008000');
+  // Small numbers are opcodes, not pushes.
+  assert.equal(bip34Prefix(0), '00');
+  assert.equal(bip34Prefix(1), '51');
+  assert.equal(bip34Prefix(16), '60');
+  assert.equal(bip34Prefix(17), '0111');
+  assert.throws(() => bip34Prefix(-1));
+});
+
+test('heightInScriptSig reads the first push', () => {
+  assert.equal(heightInScriptSig('035b7a03' + 'abcd'), 227931);
+  assert.equal(heightInScriptSig('0400008000'), 0x800000);
+  assert.equal(heightInScriptSig('4c00'), null);
+  assert.equal(heightInScriptSig(''), null);
+});
+
+test('checkCoinbaseHeight: a coinbase that commits to its height', () => {
+  const raw = coinbaseWith(bip34Prefix(900123) + '2f6d696e65722f');
+  assert.deepEqual(checkCoinbaseHeight(raw, 900123), { ok: true, applies: true, coinbase: true, claimed: 900123 });
+});
+
+test('checkCoinbaseHeight: a different height fails and says what it claims', () => {
+  const raw = coinbaseWith(bip34Prefix(900123));
+  const r = checkCoinbaseHeight(raw, 900124);
+  assert.equal(r.ok, false);
+  assert.equal(r.claimed, 900123);
+});
+
+test('checkCoinbaseHeight: a non-minimal encoding of the right number fails, as in Core', () => {
+  // 4-byte push of 227931: same number, not CScript() << 227931.
+  const r = checkCoinbaseHeight(coinbaseWith('045b7a0300'), 227931);
+  assert.equal(r.ok, false);
+  assert.equal(r.claimed, 227931);
+});
+
+test('checkCoinbaseHeight: not a coinbase fails', () => {
+  const notCoinbase = GENESIS_RAW.replace('0'.repeat(64) + 'ffffffff', '11'.repeat(32) + '00000000');
+  const r = checkCoinbaseHeight(notCoinbase, 900123);
+  assert.equal(r.ok, false);
+  assert.equal(r.coinbase, false);
+});
+
+test('checkCoinbaseHeight: blocks before BIP34 carry no height', () => {
+  // The genesis coinbase starts with the difficulty bits, not a height.
+  const r = checkCoinbaseHeight(GENESIS_RAW, 0);
+  assert.equal(r.applies, false);
+  assert.equal(checkCoinbaseHeight(GENESIS_RAW, BIP34_HEIGHT).ok, false);
 });
