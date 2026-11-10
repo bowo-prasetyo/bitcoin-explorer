@@ -1,12 +1,10 @@
 import {
-  ApiError,
   getTipHeight,
   getBlockHash,
   getBlock,
   getMempool,
   getRecentBlocks,
-  getFeeEstimates,
-  tryGetBlock
+  getFeeEstimates
 } from '../api.js';
 
 import {
@@ -14,8 +12,6 @@ import {
   createStatus,
   CACHE_TTL
 } from '../refresh.js';
-
-import { classifyQuery } from '../search.js';
 
 import {
   formatAgo,
@@ -68,23 +64,7 @@ export default {
 
     <h2>A Bitcoin explorer that checks before it shows.</h2>
 
-    <form class="search" @submit.prevent="search" role="search">
-      <input
-        v-model="query"
-        placeholder="Block height, block hash, transaction id or address"
-        aria-label="Search"
-        autocomplete="off"
-        spellcheck="false"
-        @input="searchError = ''"
-      >
-      <button type="submit" :disabled="searching">
-        {{ searching ? 'Searching…' : 'Search' }}
-      </button>
-    </form>
-
-    <div v-if="searchError" class="notice notice-error" style="margin-top:10px">
-      {{ searchError }}
-    </div>
+    <search-box></search-box>
 
   </div>
 
@@ -105,7 +85,7 @@ export default {
   <!-- BLOCKCHAIN TIP -->
   <div class="card">
 
-    <h2>Chain tip</h2>
+    <h2><glossary-term term="chain-tip">Chain tip</glossary-term></h2>
 
     <data-status :status="latestStatus" what="block"></data-status>
 
@@ -114,7 +94,10 @@ export default {
       <dd><router-link :to="'/block/' + latest.id">{{ formatNumber(latest.height) }}</router-link></dd>
 
       <dt>Hash</dt>
-      <dd class="hash"><router-link :to="'/block/' + latest.id">{{ latest.id }}</router-link></dd>
+      <dd class="hash-row">
+        <router-link class="hash" :to="'/block/' + latest.id">{{ latest.id }}</router-link>
+        <copy-button :text="latest.id" what="block hash"></copy-button>
+      </dd>
 
       <dt>Mined</dt>
       <dd>{{ formatTime(latest.timestamp) }} <span class="muted">({{ ago(latest.timestamp) }})</span></dd>
@@ -131,8 +114,10 @@ export default {
 
     <template v-if="!chainWorkEnabled">
       <p class="muted">
-        How much proof of work stands behind this chain, and does every
-        difficulty change since the genesis block follow the rules? Your
+        How much <glossary-term term="proof-of-work">proof of work</glossary-term>
+        stands behind this chain, and does every
+        <glossary-term term="difficulty">difficulty</glossary-term> change
+        since the genesis block follow the rules? Your
         browser can check both from the first and last header of each
         difficulty period, about
         {{ formatNumber(headerCount) }} {{ headerCount === 1 ? 'header' : 'headers' }}
@@ -194,7 +179,7 @@ export default {
   <!-- MEMPOOL -->
   <div class="card">
 
-    <h2>Mempool</h2>
+    <h2><glossary-term term="mempool">Mempool</glossary-term></h2>
 
     <data-status :status="mempoolStatus" what="mempool"></data-status>
 
@@ -282,10 +267,6 @@ export default {
 
   data() {
     return {
-      query: '',
-      searching: false,
-      searchError: '',
-
       latest: {},
       recentBlocks: [],
       mempool: {},
@@ -328,56 +309,6 @@ export default {
 
     ago(unixSeconds) {
       return formatAgo(unixSeconds * 1000, now.value);
-    },
-
-    // =================================================
-    // SEARCH
-    // =================================================
-
-    async search() {
-      const result = classifyQuery(this.query);
-
-      this.searchError = '';
-
-      if (result.type === 'invalid') {
-        this.searchError = result.reason;
-        return;
-      }
-
-      if (result.type === 'address') {
-        this.$router.push('/address/' + result.address);
-        return;
-      }
-
-      if (result.type === 'hash' && !result.likelyBlock) {
-        this.$router.push('/tx/' + result.hash);
-        return;
-      }
-
-      this.searching = true;
-
-      try {
-        if (result.type === 'height') {
-          const hash = await getBlockHash(result.height);
-          this.$router.push('/block/' + hash);
-          return;
-        }
-
-        // Looks like a block hash; confirm before routing.
-        const block = await tryGetBlock(result.hash);
-        this.$router.push((block ? '/block/' : '/tx/') + result.hash);
-
-      } catch (err) {
-        if (err instanceof ApiError && err.kind === 'not_found') {
-          this.searchError = `There is no block at height ${formatNumber(result.height)} yet.`;
-        } else {
-          this.searchError =
-            "Couldn't reach any Bitcoin data provider to look this up. " +
-            'Please try again in a moment.';
-        }
-      } finally {
-        this.searching = false;
-      }
     },
 
     // =================================================

@@ -150,6 +150,45 @@ a:active {
   margin-bottom: 0;
 }
 
+.search-error {
+  margin-top: 10px;
+}
+
+/* Compact search in the header of every page but home. */
+header .header-search {
+  flex: 1 1 260px;
+  max-width: 560px;
+  position: relative;
+}
+
+header .search input,
+header .search button {
+  padding: 7px 10px;
+}
+
+/* Below the header, so a long message never pushes the links around. */
+header .search-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 6px;
+  z-index: 10;
+}
+
+@media (max-width: 700px) {
+  header {
+    flex-wrap: wrap;
+  }
+
+  /* Own row, full width, under the links. */
+  header .header-search {
+    order: 10;
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
 /* ---------- facts (label / value lists) ---------- */
 
 .facts {
@@ -469,4 +508,138 @@ header .live-indicator.live-live {
 .provider-note strong {
   color: #bdbdbd;
   font-weight: normal;
+}
+
+/* ---------- copy buttons ---------- */
+
+.hash-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hash-row .hash {
+  min-width: 0;
+}
+
+.copy-wrap {
+  flex: none;
+}
+
+.copy-button {
+  padding: 2px 8px;
+  font-size: 0.8em;
+  background: #2a2a2a;
+  color: #ccc;
+  border: 1px solid #3a3a3a;
+}
+
+.copy-button:hover {
+  background: #333;
+}
+
+.copy-copied {
+  color: #a5d6a7;
+  border-color: #66bb6a;
+}
+
+.copy-failed {
+  color: #ffcdd2;
+  border-color: #ef5350;
+}
+
+/* ---------- page verification summary ---------- */
+
+.verify-summary .verify-title {
+  font-weight: bold;
+}
+
+/* ---------- glossary terms ---------- */
+
+.term-wrap {
+  position: relative;
+}
+
+/* Looks like the text it labels, with a dotted underline. */
+.term {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted #777;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.term:hover,
+.term[aria-expanded="true"] {
+  text-decoration-color: currentColor;
+}
+
+.term-pop {
+  box-sizing: border-box;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 32px));
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #3a3a3a;
+  background: #262626;
+  color: #ddd;
+  font-size: 0.9rem;
+  font-weight: normal;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.term-more {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.85em;
+}
+
+/* ---------- glossary page ---------- */
+
+.glossary dt {
+  margin-top: 12px;
+  font-weight: bold;
+}
+
+.glossary dd {
+  margin: 4px 0 0;
+  color: #ccc;
+}
+
+.glossary .selected {
+  color: #fff;
+  background: #2a2412;
+}
+
+/* ---------- footer ---------- */
+
+footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 4px 20px 24px;
+  font-size: 0.9em;
+}
+
+/* ---------- utilities ---------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

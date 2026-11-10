@@ -29,7 +29,24 @@ const MAX_HEIGHT = 99999999;
 //   { type: 'address', address }
 //   { type: 'invalid', reason }
 export function classifyQuery(input) {
-  const q = (input || '').trim();
+  let q = (input || '').trim();
+
+  // A payment link from a wallet or QR code: bitcoin:<address>?amount=…
+  const uri = /^bitcoin:([^?#]*)/i.exec(q);
+
+  if (uri) {
+    try {
+      q = decodeURIComponent(uri[1]).trim();
+    } catch {
+      q = ''; // malformed %-escape
+    }
+
+    const inner = classifyQuery(q);
+
+    return inner.type === 'address' || inner.reason?.includes('testnet')
+      ? inner
+      : { type: 'invalid', reason: 'That bitcoin: link has no valid address in it.' };
+  }
 
   if (!q) {
     return { type: 'invalid', reason: 'Enter a block height, block hash, transaction id or address.' };

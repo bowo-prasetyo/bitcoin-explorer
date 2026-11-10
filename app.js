@@ -5,6 +5,10 @@ import { initDB, pruneCache } from './db.js';
 import DataStatus from './components/DataStatus.js';
 import VerifyBadge from './components/VerifyBadge.js';
 import ProviderNote from './components/ProviderNote.js';
+import SearchBox from './components/SearchBox.js';
+import CopyButton from './components/CopyButton.js';
+import VerifySummary from './components/VerifySummary.js';
+import GlossaryTerm from './components/GlossaryTerm.js';
 import { liveFeed, liveCandidates } from './live.js';
 import { getProviderSettings } from './api.js';
 
@@ -19,14 +23,18 @@ const LIVE_LABELS = {
   disabled: ['Polling', 'Live updates are turned off (Providers page).']
 };
 
-// The user guide lives in the repository, next to the code it describes.
-const HELP_URL = 'https://github.com/bowo-prasetyo/bitcoin-explorer/blob/main/docs/user-guide.md';
+// The docs live in the repository, next to the code they describe.
+const REPO_URL = 'https://github.com/bowo-prasetyo/bitcoin-explorer';
+const HELP_URL = REPO_URL + '/blob/main/docs/user-guide.md';
+const VERIFICATION_URL = REPO_URL + '/blob/main/docs/verification.md';
 
 const App = {
   data() {
-    return { live: liveState, HELP_URL };
+    return { live: liveState, HELP_URL, VERIFICATION_URL, REPO_URL };
   },
   computed: {
+    // The home page has its own, larger search box.
+    showHeaderSearch() { return this.$route.path !== '/'; },
     liveLabel() { return LIVE_LABELS[this.live.status][0]; },
     liveTitle() { return LIVE_LABELS[this.live.status][1]; }
   },
@@ -37,6 +45,7 @@ const App = {
       <router-link to="/" class="brand" aria-label="Assay home">
         <img src="brand/assay-logo.svg" alt="Assay" width="90" height="24">
       </router-link>
+      <search-box v-if="showHeaderSearch" compact class="header-search"></search-box>
       <router-link to="/charts">Charts</router-link>
       <router-link to="/providers">Providers</router-link>
       <a :href="HELP_URL" target="_blank" rel="noopener">Help</a>
@@ -51,6 +60,13 @@ const App = {
     <!-- Keyed on the full URL so moving between two blocks (or two pages
          of one block) remounts the view and loads the new data. -->
     <router-view :key="$route.fullPath"></router-view>
+
+    <footer>
+      <router-link to="/glossary">Glossary</router-link>
+      <a :href="HELP_URL" target="_blank" rel="noopener">User guide</a>
+      <a :href="VERIFICATION_URL" target="_blank" rel="noopener">What gets verified</a>
+      <a :href="REPO_URL" target="_blank" rel="noopener">Source</a>
+    </footer>
 
   </div>
   `
@@ -85,6 +101,10 @@ async function bootstrap() {
     app.component('data-status', DataStatus);
     app.component('verify-badge', VerifyBadge);
     app.component('provider-note', ProviderNote);
+    app.component('search-box', SearchBox);
+    app.component('copy-button', CopyButton);
+    app.component('verify-summary', VerifySummary);
+    app.component('glossary-term', GlossaryTerm);
     app.use(router);
     app.mount('#app');
 

@@ -1,6 +1,9 @@
 // <verify-badge :result="result" label="Proof of work">
 // Shows the outcome of a check from verify.js, with a disclosure listing
 // exactly what was checked. `result` null means the check is running.
+//
+// Not a live region: a page has several badges, and <verify-summary>
+// announces their combined result once instead.
 
 export default {
 
@@ -24,7 +27,7 @@ export default {
   },
 
   template: `
-  <div class="verify" :class="'verify-' + state" role="status">
+  <div class="verify" :class="'verify-' + state">
 
     <div class="verify-line">
       <span class="verify-icon" aria-hidden="true">{{ icon }}</span>

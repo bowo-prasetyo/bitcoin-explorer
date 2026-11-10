@@ -23,9 +23,11 @@ what it could and couldn't prove.
 
 1. Open the [live site](https://bowo-prasetyo.github.io/bitcoin-explorer/).
    Nothing to install, no account, no node needed. Bitcoin mainnet only.
-2. Type a **block height, block hash, transaction id or address** into
-   the search box and press **Enter**.
-3. Read the badges on block and transaction pages:
+2. Type a **block height, block hash, transaction id or address** (or
+   paste a `bitcoin:` payment link) into the search box and press
+   **Enter**.
+3. Read the summary line at the top of block and transaction pages, then
+   the badges under it:
 
    | Badge | Meaning |
    |---|---|
@@ -56,14 +58,21 @@ Every check, with exactly what it proves and doesn't, is in
 
 ## Features
 
-- **Search** by height, hash, txid or address. Input is checked before
-  anything is sent, with an explanation when it can't be valid.
+- **Search** from every page by height, hash, txid, address or
+  `bitcoin:` payment link. Input is checked before anything is sent,
+  with an explanation when it can't be valid.
+- **Verification at a glance:** a summary line on block and transaction
+  pages ("All 3 checks passed", "1 of 3 checks FAILED"), above the
+  individual badges.
+- **Plain words:** tap a dotted-underlined label for its definition, or
+  open the in-app glossary.
+- **Copy** buttons for hashes, txids and addresses.
 - **Home:** chain tip, recent blocks, mempool, fee estimates and a fee
   histogram.
 - **Blocks:** time, confirmations, size, weight, links to neighbouring
   blocks, and all transactions, 25 per page.
-- **Transactions:** status, fee and fee rate, size, every input and
-  output. Inputs link to the transaction that created the coins.
+- **Transactions:** status, confirmations, fee and fee rate, size, every
+  input and output. Inputs link to the transaction that created the coins.
 - **Addresses:** balance, pending change, totals, and history with each
   transaction's effect on the balance.
 - **Charts:** pending-transaction count over time, recorded by your
@@ -143,7 +152,8 @@ of every browser module, on every push and pull request.
   checks are kept separately and not pruned.
 - **Polling:** every 10 s while you're active and 30 s when idle. It
   pauses in background tabs, and stops when there's nothing left to
-  watch, for example once a transaction confirms.
+  watch, for example once a transaction confirms. A transaction page
+  keeps asking for the tip height only, to count confirmations.
 - **Live updates:** one shared WebSocket to mempool.space (or to your
   endpoint, if it runs a mempool backend) that subscribes to new blocks
   only. A message is a hint to fetch and verify through the normal
@@ -166,12 +176,14 @@ of every browser module, on every push and pull request.
 | `format.js` | BTC amounts, fee rates, times |
 | `spv.js` | Verification primitives: header proof of work, Merkle roots and proofs, txids from raw transactions |
 | `verify.js` | Runs the checks behind each badge |
+| `summary.js` | Sums up a page's badges in one line |
+| `glossary.js` | The in-app glossary; must match `docs/glossary.md` (a test checks) |
 | `live.js` | Live "new block" notifications over WebSocket |
 | `consensus.js` | Compares chain tips across providers |
 | `chainwork.js` | Total work behind a tip, from one header per difficulty period |
 | `inputs.js` | Checks inputs against the raw transactions they spend |
 | `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |
-| `components/` | Views, plus the shared `DataStatus`, `VerifyBadge` and `ProviderNote` |
+| `components/` | Views, plus shared pieces: `DataStatus`, `VerifyBadge`, `VerifySummary`, `ProviderNote`, `SearchBox`, `CopyButton`, `GlossaryTerm` |
 | `docs/` | User guide, verification reference, glossary |
 | `tests/` | Unit tests |
 | `brand/`, `favicon.*`, `apple-touch-icon.png` | Logo, favicons and brand guide ([brand/README.md](brand/README.md)) |
