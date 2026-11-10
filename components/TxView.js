@@ -24,6 +24,7 @@ import {
   verifyTransactionContents,
   verifyTransactionInclusion,
   verifyConfirmations,
+  verifyWitness,
   verifyTransactionInputs
 } from '../verify.js';
 
@@ -43,7 +44,7 @@ export default {
 
       <data-status :status="status" what="transaction"></data-status>
 
-      <verify-summary v-if="tx" :results="[contentsCheck, inputsCheck, inclusionCheck, confirmationsCheck]"></verify-summary>
+      <verify-summary v-if="tx" :results="[contentsCheck, inputsCheck, inclusionCheck, confirmationsCheck, witnessCheck]"></verify-summary>
 
       <dl v-if="tx" class="facts">
 
@@ -111,6 +112,13 @@ export default {
         </verify-badge>
         <verify-badge :result="inclusionCheck"></verify-badge>
         <verify-badge :result="confirmationsCheck"></verify-badge>
+        <verify-badge :result="witnessCheck">
+          <button
+            v-if="witnessCheck?.needsConfirm"
+            class="verify-action"
+            @click="checkWitness(true)"
+          >Check witness data (downloads the block, {{ formatMB(witnessCheck.blockBytes) }})</button>
+        </verify-badge>
       </template>
 
     </div>
@@ -216,8 +224,25 @@ export default {
       inputsCheck: null,
       inclusionCheck: null,
       confirmationsCheck: null,
+      confirmationsRunning: false,
+      confirmationsAgain: false,
+      witnessCheck: null,
       inclusionStartedFor: null
     };
+  },
+
+  watch: {
+    // A new block: count the confirmations again, header by header. A
+    // count already at "at least" the limit can't change, so it isn't.
+    tipHeight(height, before) {
+      if (
+        before !== null && height > before &&
+        this.inclusionCheck?.state === 'ok' &&
+        this.confirmationsCheck && !this.confirmationsCheck.atLeast
+      ) {
+        this.checkConfirmations();
+      }
+    }
   },
 
   computed: {
@@ -270,6 +295,42 @@ export default {
       });
     },
 
+    formatMB(bytes) {
+      return bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.round(bytes / 1e3)} kB`;
+    },
+
+    async checkWitness(force) {
+      const tx = this.tx;
+      this.witnessCheck = null;
+      const r = await verifyWitness(tx, { header: this.inclusionCheck?.header ?? null, force });
+      if (this.tx === tx) this.witnessCheck = r;
+    },
+
+    // Counts the blocks on top again. The previous result stays on screen
+    // until the new one is in; a tip that moves meanwhile runs it again.
+    async checkConfirmations() {
+      if (this.confirmationsRunning) {
+        this.confirmationsAgain = true;
+        return;
+      }
+
+      this.confirmationsRunning = true;
+      const tx = this.tx;
+
+      try {
+        const r = await verifyConfirmations(tx);
+        if (this.tx?.txid === tx.txid && this.inclusionCheck?.state === 'ok') {
+          this.confirmationsCheck = r;
+        }
+      } finally {
+        this.confirmationsRunning = false;
+        if (this.confirmationsAgain) {
+          this.confirmationsAgain = false;
+          this.checkConfirmations();
+        }
+      }
+    },
+
     inputMark(index) {
       return this.inputsCheck?.perInput?.[index] || null;
     },
@@ -292,15 +353,21 @@ export default {
         this.inclusionStartedFor = key;
         this.inclusionCheck = null;
         this.confirmationsCheck = null;
+        this.witnessCheck = null;
         this.inclusionCheck = await verifyTransactionInclusion(tx);
 
-        // Blocks on top only mean something once the transaction is
-        // proved to be in this block.
-        this.confirmationsCheck = this.inclusionCheck.state === 'ok'
-          ? await verifyConfirmations(tx)
-          : this.inclusionCheck.state === 'na'
-            ? { ...this.inclusionCheck, title: 'Not in a block yet: no confirmations to check.' }
-            : { state: 'na', title: 'Confirmations are checked once inclusion is verified.', checks: [], facts: [] };
+        // Blocks on top, and the witness committed in the block, only mean
+        // something once the transaction is proved to be in this block.
+        if (this.inclusionCheck.state === 'ok') {
+          this.checkWitness(false);
+          await this.checkConfirmations();
+        } else {
+          const later = what => this.inclusionCheck.state === 'na'
+            ? { ...this.inclusionCheck, title: `Not in a block yet: no ${what} to check.` }
+            : { state: 'na', title: `${what[0].toUpperCase() + what.slice(1)} ${what.endsWith('s') ? 'are' : 'is'} checked once inclusion is verified.`, checks: [], facts: [] };
+          this.confirmationsCheck = later('confirmations');
+          this.witnessCheck = later('witness data');
+        }
       }
     }
   },

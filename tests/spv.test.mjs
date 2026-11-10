@@ -350,3 +350,81 @@ test('checkCoinbaseHeight: blocks before BIP34 carry no height', () => {
   assert.equal(r.applies, false);
   assert.equal(checkCoinbaseHeight(GENESIS_RAW, BIP34_HEIGHT).ok, false);
 });
+
+// ---------------------------------------------------------------
+// BIP141: witness commitment
+// ---------------------------------------------------------------
+
+import { checkWitnessCommitment } from '../spv.js';
+import { block, segwitSpend, legacySpend, witnessCommitment, RESERVED } from './witness-fixtures.mjs';
+
+test('witness: the real genesis block has no witness data and needs no commitment', async () => {
+  const r = await checkWitnessCommitment(GENESIS_HEADER + '01' + GENESIS_RAW);
+  assert.equal(r.merkleRoot, GENESIS_TXID);
+  assert.equal(r.commitment, 'none');
+  assert.equal(r.ok, true);
+  assert.equal(r.txs[0].weight, 816);
+});
+
+test('witness: a block committing to its witness data passes', async () => {
+  const spend = segwitSpend();
+  const b = block([spend, legacySpend()]);
+  const r = await checkWitnessCommitment(b.hex);
+  assert.equal(r.merkleRoot, b.merkleRoot);
+  assert.equal(r.commitment, 'match');
+  assert.equal(r.ok, true);
+  const t = r.txs.find(x => x.txid === spend.txid);
+  assert.deepEqual([t.wtxid, t.weight, t.size, t.segwit], [spend.wtxid, spend.weight, spend.size, true]);
+  // The coinbase's wtxid counts as zero.
+  assert.equal(r.txs[0].wtxid, '00'.repeat(32));
+});
+
+test('witness: a swapped signature keeps the txid but breaks the commitment', async () => {
+  const honest = segwitSpend('cd'.repeat(72));
+  const swapped = segwitSpend('ef'.repeat(70)); // same txid, other witness
+  assert.equal(swapped.txid, honest.txid);
+  assert.notEqual(swapped.weight, honest.weight);
+
+  const committed = block([honest]);
+  // The same block bytes, with the other witness put in.
+  const r = await checkWitnessCommitment(committed.hex.replace(honest.hex, swapped.hex));
+  assert.equal(r.merkleRoot, committed.merkleRoot); // txids unchanged
+  assert.equal(r.commitment, 'mismatch');
+  assert.equal(r.ok, false);
+});
+
+test('witness: witness data without any commitment fails', async () => {
+  const r = await checkWitnessCommitment(block([segwitSpend()], { commit: false }).hex);
+  assert.equal(r.commitment, 'none');
+  assert.equal(r.hasWitness, true);
+  assert.equal(r.ok, false);
+});
+
+test('witness: a block without witness data needs no commitment', async () => {
+  const r = await checkWitnessCommitment(block([legacySpend()], { commit: false }).hex);
+  assert.equal(r.ok, true);
+});
+
+test("witness: the coinbase's reserved value must be exactly one 32-byte item", async () => {
+  const two = await checkWitnessCommitment(block([segwitSpend()], { coinbaseWitness: [[RESERVED, '00']] }).hex);
+  assert.equal(two.commitment, 'malformed');
+  const short = await checkWitnessCommitment(block([segwitSpend()], { coinbaseWitness: [['ab'.repeat(31)]] }).hex);
+  assert.equal(short.commitment, 'malformed');
+});
+
+test('witness: the last commitment output is the one that counts', async () => {
+  // Bitcoin Core uses the last output that looks like a commitment.
+  const spend = segwitSpend();
+  const right = witnessCommitment([spend]);
+  const wrong = 'ff'.repeat(32);
+  const lastRight = block([spend], { earlier: wrong, commit: right });
+  const lastWrong = block([spend], { earlier: right, commit: wrong });
+  assert.equal((await checkWitnessCommitment(lastRight.hex)).commitment, 'match');
+  assert.equal((await checkWitnessCommitment(lastWrong.hex)).commitment, 'mismatch');
+});
+
+test('witness: trailing or missing bytes are rejected', async () => {
+  const b = block([legacySpend()]);
+  await assert.rejects(checkWitnessCommitment(b.hex + '00'), /Trailing bytes/);
+  await assert.rejects(checkWitnessCommitment(b.hex.slice(0, -2)), /Truncated/);
+});

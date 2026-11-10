@@ -9,6 +9,16 @@ against the live data providers.
 
 ### Added
 
+- **Witness data (BIP141):** transaction pages download the
+  transaction's block and check that its coinbase commits to every
+  transaction's full bytes, signatures included. The block must hash to
+  its id and rebuild the checked header's Merkle root. The size, weight
+  and fee rate shown are then proved, not just reported. Blocks over
+  500 kB wait for a click that shows the download size.
+- **Confirmations re-verified with each new block** while a transaction
+  page is open; the last verified count stays on screen until the new one
+  is in.
+
 - **Verified confirmations:** transaction pages count the blocks built on
   the transaction's block header by header, instead of taking the
   provider's tip height. Every header up to the newest block the providers

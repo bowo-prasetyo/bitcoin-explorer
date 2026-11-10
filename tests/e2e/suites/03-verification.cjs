@@ -63,6 +63,8 @@ function core(scenario) {
     [`/block/${G_HASH}/header`]: G_HEADER,
     [`/block/${G_HASH}/txids`]: [G_TXID],
     [`/block/${G_HASH}/txid/0`]: G_TXID,
+    // The whole genesis block, raw: header, one transaction, the coinbase.
+    [`/block/${G_HASH}/raw`]: { rawHex: G_HEADER + '01' + G_RAW },
     [`/block/${G_HASH}/txs/0`]: [G_TX],
     [`/block/${G_HASH}/status`]: { in_best_chain: true, height: 0 },
     [`/tx/${G_TXID}`]: G_TX,
@@ -81,7 +83,12 @@ function core(scenario) {
   if (scenario === 'fake-amount') {
     m[`/tx/${G_TXID}`] = { ...G_TX, vout: [{ ...G_TX.vout[0], value: 2100000000000000 }] };
   }
+  if (scenario === 'tip-genesis') {
+    m['/blocks/tip/height'] = '0';
+    m['/blocks/tip/hash'] = G_HASH;
+  }
   if (scenario === 'tip-block1' || scenario === 'tip-block1-altered') {
+    m['/blocks/tip/height'] = '1';
     // Both providers' newest block is block 1, built on genesis.
     const b1 = { id: B1_HASH, height: 1, version: 1, previousblockhash: G_HASH,
       merkle_root: '0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098',
@@ -132,6 +139,7 @@ function mockFor(host, p) {
   }
   if (!(p in m)) return { status: 404, body: 'not found' };
   const v = m[p];
+  if (v?.rawHex) return { body: Buffer.from(v.rawHex, 'hex') };
   return { body: typeof v === 'string' ? v : JSON.stringify(v) };
 }
 
@@ -253,7 +261,32 @@ module.exports = async function ({ chromium, BASE, check }) {
   await waitBadges(page, 4);
   b = await badgeTexts(page);
   check('tx: confirmations verified up to the agreed tip', b.some(t => /verify-ok :: 2 confirmations verified/.test(t)), b.join(' | '));
-  check('tx: summary counts the confirmations check', b.some(t => /verify-summary.*All 3 checks passed/.test(t)), b.join(' | '));
+  check('tx: summary counts the confirmations and witness checks', b.some(t => /verify-summary.*All 4 checks passed/.test(t)), b.join(' | '));
+  check('tx: weight verified from the whole block (no witness data in it)', b.some(t => /verify-ok :: Weight verified \(no witness data\)/.test(t)), b.join(' | '));
+  await page.context().close();
+
+  // ---- A new block arrives while the page is open: counted again
+  scenario = 'tip-genesis';
+  page = await fresh();
+  await page.clock.install();
+  await page.goto(BASE + '#/tx/' + G_TXID);
+  await waitBadges(page, 4);
+  b = await badgeTexts(page);
+  check('tx: in the newest block -> 1 confirmation verified', b.some(t => /verify-ok :: 1 confirmation verified/.test(t)), b.join(' | '));
+  scenario = 'tip-block1';
+  // Step the fake clock 5 s at a time (under the app's 8 s request timeout)
+  // and give the mocked requests real time to answer between steps, until
+  // the tip poll has picked up block 1 and the count is checked again.
+  let recounted = false;
+  for (let i = 0; i < 30 && !recounted; i++) {
+    await page.clock.runFor(5000);
+    recounted = await page.waitForFunction(
+      () => [...document.querySelectorAll('.verify-ok .verify-title')].some(e => /2 confirmations verified/.test(e.textContent)),
+      null, { timeout: 500 }).then(() => true, () => false);
+  }
+  check('tx: a new block re-verifies the confirmations without a reload', recounted, (await badgeTexts(page)).join(' | '));
+  // Done with it: a page left open keeps polling into the shared host log.
+  await page.context().close();
 
   scenario = 'tip-block1-altered';
   page = await fresh();
@@ -261,6 +294,7 @@ module.exports = async function ({ chromium, BASE, check }) {
   await waitBadges(page, 4);
   b = await badgeTexts(page);
   check('tx: a header above the block that was altered -> confirmations FAILED', b.some(t => /verify-fail :: Confirmations check FAILED/.test(t)), b.join(' | '));
+  await page.context().close();
   scenario = 'honest';
 
   // ---- Tip agreement
@@ -324,7 +358,7 @@ module.exports = async function ({ chromium, BASE, check }) {
   const used = [...new Set(hosts)];
   check('custom exclusive: only your endpoint is contacted', used.length === 1 && used[0] === 'my-node.example', used.join(','));
   b = await badgeTexts(page);
-  check('custom exclusive: verification still works', b.filter(x => /verify-ok/.test(x) && !/verify-summary/.test(x)).length === 2, b.join(' | '));
+  check('custom exclusive: verification still works (contents, inclusion, witness)', b.filter(x => /verify-ok/.test(x) && !/verify-summary/.test(x)).length === 3, b.join(' | '));
 
   await page.goto(BASE);
   await waitBadges(page, 1);

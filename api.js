@@ -458,6 +458,15 @@ export async function getMempool() {
   return await r.json();
 }
 
+// The whole block, raw (hex). Up to ~4 MB.
+export async function getBlockRaw(hash) {
+  const r = await apiFetch(`/block/${hash}/raw`);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  let hex = '';
+  for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+  return hex;
+}
+
 // Blocks at `height` and just below it, newest first (Esplora returns 10;
 // some servers more). With `base`, asks that provider only.
 export async function getBlocksFrom(height, base = null) {

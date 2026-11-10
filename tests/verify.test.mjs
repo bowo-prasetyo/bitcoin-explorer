@@ -20,6 +20,7 @@ globalThis.fetch = async url => {
   const u = new URL(url);
   const body = routes[u.host]?.[u.pathname.replace(/^\/api/, '')];
   if (body === undefined) return new Response('not found', { status: 404 });
+  if (body instanceof Uint8Array) return new Response(body, { status: 200 });
   return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status: 200 });
 };
 
@@ -571,4 +572,78 @@ test('confirmations: a provider that leaves out a block leaves it grey', async (
 test('confirmations: unconfirmed transactions have nothing to check', async () => {
   const r = await V.verifyConfirmations({ ...G_TX, status: { confirmed: false } });
   assert.equal(r.state, 'na');
+});
+
+// ---- Witness data (BIP141): size, weight, fee rate ----
+
+const W = await import('./witness-fixtures.mjs');
+
+function serveWitnessBlock(b, size = b.hex.length / 2) {
+  serve(`/block/${b.hash}`, { id: b.hash, size });
+  serve(`/block/${b.hash}/raw`, new Uint8Array(Buffer.from(b.hex, 'hex')));
+}
+const inBlock = (b, t, extra = {}) => ({
+  txid: t.txid, weight: t.weight, size: t.size,
+  status: { confirmed: true, block_height: 900123, block_hash: b.hash }, ...extra
+});
+
+test('witness: a SegWit transaction committed in its block passes', async () => {
+  const spend = W.segwitSpend();
+  const b = W.block([spend, W.legacySpend()]);
+  serveWitnessBlock(b);
+  const r = await V.verifyWitness(inBlock(b, spend), { header: { merkleRoot: b.merkleRoot } });
+  assert.equal(r.state, 'ok', JSON.stringify(r.checks));
+  assert.equal(r.title, 'Witness data and weight verified');
+  assert.equal(r.verifiedWeight, spend.weight);
+});
+
+test('witness: a weight the block does not support FAILS (fee rate would be wrong)', async () => {
+  // The provider serves the transaction with a lighter witness: same txid,
+  // smaller weight, so a higher fee rate. The block holds the real one.
+  const real = W.segwitSpend('cd'.repeat(72));
+  const light = W.segwitSpend('cd'.repeat(10));
+  const b = W.block([real]);
+  serveWitnessBlock(b);
+  const r = await V.verifyWitness(inBlock(b, real, { weight: light.weight, size: light.size }),
+    { header: { merkleRoot: b.merkleRoot } });
+  assert.equal(r.state, 'fail');
+  assert.ok(failed(r, `Weight is ${real.weight} WU, as shown`), JSON.stringify(r.checks));
+});
+
+test('witness: a block whose witness data was swapped FAILS the commitment', async () => {
+  const real = W.segwitSpend('cd'.repeat(72));
+  const swapped = W.segwitSpend('ef'.repeat(70));
+  const b = W.block([real]);
+  serveWitnessBlock({ ...b, hex: b.hex.replace(real.hex, swapped.hex) });
+  const r = await V.verifyWitness(inBlock(b, swapped), { header: { merkleRoot: b.merkleRoot } });
+  assert.equal(r.state, 'fail');
+  assert.ok(failed(r, "commits to every transaction's witness data"));
+});
+
+test("witness: a block that isn't the one in the checked header FAILS", async () => {
+  const spend = W.segwitSpend();
+  const b = W.block([spend]);
+  serveWitnessBlock(b);
+  const r = await V.verifyWitness(inBlock(b, spend), { header: { merkleRoot: 'ee'.repeat(32) } });
+  assert.equal(r.state, 'fail');
+});
+
+test('witness: a large block waits to be asked, then runs', async () => {
+  const spend = W.segwitSpend();
+  const b = W.block([spend]);
+  serveWitnessBlock(b, 1_600_000); // the provider says it's 1.6 MB
+  const tx = inBlock(b, spend);
+  const ask = await V.verifyWitness(tx, { header: { merkleRoot: b.merkleRoot } });
+  assert.equal(ask.state, 'na');
+  assert.equal(ask.needsConfirm, true);
+  assert.match(ask.title, /1\.6 MB/);
+  const run = await V.verifyWitness(tx, { header: { merkleRoot: b.merkleRoot }, force: true });
+  assert.equal(run.state, 'ok', JSON.stringify(run.checks));
+});
+
+test('witness: unconfirmed, or before inclusion is verified, there is nothing to check', async () => {
+  assert.equal((await V.verifyWitness({ txid: 'x', status: { confirmed: false } })).state, 'na');
+  const spend = W.segwitSpend();
+  const b = W.block([spend]);
+  assert.equal((await V.verifyWitness(inBlock(b, spend))).state, 'na');
 });
