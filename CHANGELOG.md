@@ -5,7 +5,11 @@ The site deploys from `main` continuously; a release marks a version that
 has passed the [release checklist](docs/releasing.md), including a check
 against the live data providers.
 
-## [1.0.0] — unreleased
+## [Unreleased]
+
+Nothing yet.
+
+## [1.0.0] — 2026-11-10
 
 The first release. It turns the original client-side Bitcoin explorer
 into **Assay**: an explorer whose browser checks blockchain data instead
@@ -108,4 +112,5 @@ balances, the mempool, fee estimates and the recent-blocks list. See
   that spent outputs were unspent; only a full node can.
 - Bitcoin mainnet only.
 
+[Unreleased]: https://github.com/bowo-prasetyo/bitcoin-explorer/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/bowo-prasetyo/bitcoin-explorer/releases/tag/v1.0.0
