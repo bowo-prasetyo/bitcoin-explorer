@@ -26,7 +26,8 @@ import {
   getTxHex,
   getMerkleProof,
   getTipFromEach,
-  getBlockHashFrom
+  getBlockHashFrom,
+  recordTipCheck
 } from './api.js';
 
 import {
@@ -773,6 +774,10 @@ export async function verifyTip() {
     // failure, never just "unreachable".
     const tips = await checkTipHeaders(await getTipFromEach());
 
+    // Leave providers that sent an invalid tip out of lookups; let one
+    // back in once its tip checks out again.
+    recordTipCheck(tips);
+
     // For providers behind the leader, ask the leader what it has at their
     // height, to tell "behind on the same chain" from "a different chain".
     const responding = tips.filter(t => t.ok);
@@ -854,9 +859,11 @@ export async function verifyTip() {
       })),
       note: cmp.state === 'invalid'
         ? 'A tip that fails proof of work is not a real block: the provider ' +
-          'is broken, or is showing you a fake chain. Treat data from it with ' +
-          'suspicion until this clears, and compare with another provider or ' +
-          'your own node.'
+          'is broken, or is showing you a fake chain. Assay stops asking ' +
+          (cmp.invalid.length === 1 ? 'it' : 'them') + ' for lookups until ' +
+          'a tip passes this check again (at most 24 hours; you can let one ' +
+          'back in sooner on the Providers page). If it is your own node, ' +
+          'check that it runs Bitcoin mainnet.'
         : 'Each tip header is checked for proof of work. Agreement between ' +
           'independent providers makes it much harder for one of them to show ' +
           'you a fake or stale chain.'

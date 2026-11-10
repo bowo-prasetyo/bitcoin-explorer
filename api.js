@@ -7,6 +7,13 @@
 // (a self-hosted Esplora, or one reached over Tor), and optionally use it
 // exclusively so no lookup leaves their own infrastructure.
 
+import {
+  parseDistrust,
+  isDistrusted,
+  lookupNodes,
+  applyTipCheck
+} from './distrust.js';
+
 const DEFAULT_PROVIDERS = [
   {
     name: 'Blockstream',
@@ -27,6 +34,8 @@ const DEFAULT_PROVIDERS = [
 //                   requested object does not exist (or the query
 //                   is malformed). Retrying elsewhere won't help.
 //   'unavailable' - no provider could be reached or answered.
+//   'distrusted'  - every provider is left out of lookups for having
+//                   sent an invalid chain tip (distrust.js).
 export class ApiError extends Error {
 
   constructor(kind, message, details = []) {
@@ -45,6 +54,7 @@ export class ApiError extends Error {
 // visitors' saved settings (e.g. their own endpoint).
 const BEST_NODE_KEY = 'btc_explorer_best_node';
 const CUSTOM_KEY = 'btc_explorer_custom_provider';
+const DISTRUST_KEY = 'btc_explorer_distrusted';
 
 function readStorage(key) {
   try {
@@ -212,6 +222,34 @@ function markFailure(base, timeout = false, message = '') {
   state.lastError = timeout ? 'timeout' : message;
 }
 
+// =====================================================
+// DISTRUSTED PROVIDERS
+// =====================================================
+
+// Stored, so a provider caught faking stays out of lookups after a reload,
+// before any page has re-checked the tip.
+let distrust = parseDistrust(readStorage(DISTRUST_KEY));
+
+function saveDistrust(next) {
+  distrust = next;
+  writeStorage(DISTRUST_KEY, Object.keys(next).length ? JSON.stringify(next) : null);
+}
+
+// Called with every chain-tip check (verify.js verifyTip): providers whose
+// tip was invalid are left out of lookups; a valid tip lets one back in.
+export function recordTipCheck(tips) {
+  const next = applyTipCheck(distrust, tips);
+  if (next !== distrust) saveDistrust(next);
+}
+
+// The user's override on the Providers page.
+export function trustProviderAgain(base) {
+  if (!distrust[base]) return;
+  const next = { ...distrust };
+  delete next[base];
+  saveDistrust(next);
+}
+
 // Requests made to providers this session, for the Providers page.
 const networkStats = { requests: 0, since: Date.now() };
 
@@ -250,8 +288,17 @@ function isDefinitiveAnswer(status) {
 async function apiFetch(path) {
 
   const errors = [];
+  const nodes = lookupNodes(getRankedNodes(), distrust);
 
-  for (const node of getRankedNodes()) {
+  if (!nodes.length) {
+    throw new ApiError(
+      'distrusted',
+      'Every data provider sent an invalid chain tip, so Assay is not ' +
+      'asking them for anything until one passes the check again.'
+    );
+  }
+
+  for (const node of nodes) {
 
     const start = performance.now();
 
@@ -512,15 +559,18 @@ export async function testEndpoint(input) {
 
 export function getNodeHealth() {
   const ranked = getRankedNodes();
+  const preferred = lookupNodes(ranked, distrust)[0]?.base;
 
-  return ranked.map((node, i) => {
+  return ranked.map(node => {
     const state = ensureState(node.base);
 
     return {
       name: node.name,
       base: node.base,
       custom: !!node.custom,
-      preferred: i === 0,
+      preferred: node.base === preferred,
+      // { reason, since } while left out of lookups, else null.
+      distrusted: isDistrusted(distrust, node.base) ? { ...distrust[node.base] } : null,
       score: state.score,
       success: state.success,
       failure: state.failure,
