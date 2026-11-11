@@ -111,7 +111,8 @@ with **Use only my endpoint** ticked. The details are in the
 Assay is a static site (Vue, Vue Router, Chart.js, IndexedDB) that reads
 from public [Esplora](https://github.com/Blockstream/esplora/blob/master/API.md)
 APIs. There is no backend, so it can be hosted on GitHub Pages or any
-static host.
+static host. It deploys to GitHub Pages from `.github/workflows/pages.yml`,
+which adds the [header files](tools/headers/README.md) under `headers/`.
 
 ### Run locally
 

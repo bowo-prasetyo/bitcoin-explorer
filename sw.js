@@ -9,7 +9,8 @@
 //   Integrity by the page) never change, so they are served from the cache.
 // - Bitcoin data requests are never touched: the app keeps its own offline
 //   copy of what you viewed, with its age (refresh.js), and a second copy
-//   here would only hold your lookups twice.
+//   here would only hold your lookups twice. That includes the header
+//   files the site itself serves under headers/ (tools/headers).
 //
 // Written as a plain script with `var` and function declarations so that
 // tests/sw.test.mjs can load it in Node and check the file list.
@@ -88,6 +89,9 @@ var NETWORK_TIMEOUT = 4000;
 // 'pass' for everything else (Bitcoin data, links elsewhere).
 function strategyFor(url, ownOrigin, method) {
   if (method !== 'GET') return 'pass';
+  // Header files (tools/headers): Bitcoin data, up to ~78 MB, kept by
+  // the app itself; never copied into the app cache or timed out here.
+  if (url.origin === ownOrigin && /\/headers\//.test(url.pathname)) return 'pass';
   if (url.origin === ownOrigin) return 'app';
   if (LIBRARIES.indexOf(url.href) !== -1) return 'library';
   return 'pass';
