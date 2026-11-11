@@ -202,7 +202,7 @@ module.exports = async function ({ chromium, BASE, check }) {
     const r = indexedDB.open('btc-explorer');
     r.onsuccess = () => res({ v: r.result.version, stores: [...r.result.objectStoreNames] });
   }));
-  check('db: v3 without write-only stores', dbInfo.v === 3 && !dbInfo.stores.includes('blocks') && !dbInfo.stores.includes('txs'), JSON.stringify(dbInfo));
+  check('db: v4 with the periods store, without write-only stores', dbInfo.v === 4 && dbInfo.stores.includes('periods') && !dbInfo.stores.includes('blocks') && !dbInfo.stores.includes('txs'), JSON.stringify(dbInfo));
 
   await page.evaluate(() => new Promise((res, rej) => {
     const r = indexedDB.open('btc-explorer');

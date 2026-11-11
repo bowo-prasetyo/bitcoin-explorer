@@ -171,7 +171,9 @@ like the total-work check.
      workflow that adds the `headers` branch, after every push to `main`
      and every header run. Release assets were ruled out: browsers can't
      read them cross-origin.
-3. Storage (one record per period) and a sync in a worker, with progress.
+3. ✅ Storage (one record per period) and a sync in a worker, with
+   progress: an opt-in card on the home page. Stored headers are checked
+   again from the genesis block on every visit.
 4. Following the tip and reorganisations: the chain with the most work
    wins, not the one most providers report.
 5. Block, transaction and chain checks read from the local chain when it

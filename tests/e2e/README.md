@@ -42,6 +42,7 @@ If CI fails, its screenshots are attached to the run.
 | `07-difficulty-history` | Difficulty traced back to the genesis block, and the block page's trace button |
 | `08-live-updates` | Live updates: blocks-only subscription, less polling, reconnect back-off, hidden tabs, exclusive endpoint |
 | `09-theme` | Light and dark: following the device (live), the footer choice and its memory, no flash on load, logo, title-bar colour, chart colours, blocked storage |
+| `10-header-chain` | Full header chain: opt-in and size, download in a worker, no files on the site, a file that breaks the chain (nothing stored), tampered storage re-checked and deleted, delete |
 
 ## What they can't cover
 

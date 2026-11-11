@@ -35,6 +35,7 @@ import {
 } from '../verify.js';
 
 import { headersOptedIn, optInToHeaders } from '../history.js';
+import HeaderChainCard from './HeaderChainCard.js';
 
 // Confirmation targets worth showing, out of the ~28 Esplora returns.
 const FEE_TARGETS = [1, 3, 6, 12, 24, 144, 504, 1008];
@@ -50,6 +51,8 @@ function etaLabel(blocks) {
 }
 
 export default {
+
+  components: { HeaderChainCard },
 
   template: `
 <div class="container home-grid">
@@ -134,6 +137,9 @@ export default {
     </template>
 
   </div>
+
+  <!-- FULL HEADER CHAIN -->
+  <header-chain-card v-if="latest.id" :tip-height="latest.height"></header-chain-card>
 
   <!-- RECENT BLOCKS -->
   <div class="card">

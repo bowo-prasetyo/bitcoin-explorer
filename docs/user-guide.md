@@ -33,7 +33,7 @@ The header is the same on every page:
 |---|---|
 | **Assay** logo | Back to the home page. |
 | **Search box** | On every page except home, which has its own larger one. See [Search](#2-search). |
-| **Charts** | Bitcoin's difficulty, block times and estimated hashrate since 2009, checked by your browser; and how many transactions are waiting right now. See [task 4.7](#47-see-bitcoins-history). |
+| **Charts** | Bitcoin's difficulty, block times and estimated hashrate since 2009, checked by your browser; and how many transactions are waiting right now. See [task 4.8](#48-see-bitcoins-history). |
 | **Providers** | Which servers Assay asks for data, whether they agree, and where to add your own node. |
 | **Help** | Opens this guide. |
 | **● Live** / **Polling** | How Assay learns about new blocks. See [Live and polling](#live-and-polling). |
@@ -66,6 +66,7 @@ two to a row; on a phone, one below the other:
 | **Search** | Look up a block, transaction or address. **Try:** links open the very first block, its transaction and Satoshi Nakamoto's address. |
 | **Chain tip** | The newest block, and a badge saying whether the data providers agree on it. If the check fails or can't run, **Check again** asks them all once more. |
 | **Work behind the tip** | An optional check of all the work behind the chain. See [task 4.4](#44-check-the-whole-chain). |
+| **Full header chain** | Optional: every block header since 2009, checked and kept in your browser. See [task 4.5](#45-keep-the-full-header-chain). |
 | **Recent blocks** | The latest blocks. Click a height to open the block. |
 | **Mempool** | Transactions waiting to be confirmed, and their total size and fees. |
 | **Fee estimates** | The fee rate likely to get a transaction confirmed within a given number of blocks. |
@@ -265,7 +266,28 @@ If you run Bitcoin Core, compare the `chainwork` value with the output of
 `bitcoin-cli getblockchaininfo`. They should be identical for the same
 block.
 
-### 4.5 Check that the data providers agree
+### 4.5 Keep the full header chain
+
+The **Full header chain** card on the home page keeps every block header
+since 2009 in your browser, each one checked against Bitcoin's rules.
+
+1. Click **Download and check the header chain**. The card says how much
+   it downloads first: about 78 MB, from Assay's own site, then about
+   160 KB every two weeks. Your browser may ask whether Assay can keep
+   data permanently; if it doesn't keep it, it may clear it when storage
+   runs low, and it downloads again.
+2. A progress bar shows each difficulty period being downloaded and
+   checked. You can click **Stop** and carry on another time: what is
+   done is kept.
+3. The badge says **Header chain checked from the genesis block to block
+   N**. Under **What was checked**: how many headers link one to the
+   next, that all follow the rules, how many providers have block N, the
+   total work and its `chainwork` value.
+
+On later visits the card checks the stored headers again first, then
+fetches any new period. **Delete stored headers** removes them.
+
+### 4.6 Check that the data providers agree
 
 Assay asks more than one *provider* for the newest block. The **Chain
 tip** card on the home page and **Do they agree?** on the **Providers**
@@ -296,7 +318,7 @@ only endpoint, pages say *Every data provider sent an invalid chain tip,
 so Assay has stopped asking them* instead of loading anything.
 | *Only one provider configured / answered: nothing to compare* | There is nothing to compare. This is expected if you use only your own node. |
 
-### 4.6 Look up an address
+### 4.7 Look up an address
 
 Search for the address. You see its balance, pending changes from
 unconfirmed transactions, totals received and sent, and its history with
@@ -307,7 +329,7 @@ Address data is **not verified**. Proving a balance needs a full list of
 every unspent coin, which only a full node has. To avoid trusting a
 public provider, [use your own node](#5-use-your-own-node).
 
-### 4.7 See Bitcoin's history
+### 4.8 See Bitcoin's history
 
 Click **Charts** in the header. **Bitcoin since 2009** draws three charts,
 one point per *difficulty period* (2,016 blocks, about two weeks):
@@ -336,7 +358,7 @@ Below, **Mempool transaction count** is recorded by your browser while
 the page is open. It isn't history: Assay can't check past mempool
 contents, so it doesn't show a provider's.
 
-### 4.8 Install Assay and use it offline
+### 4.9 Install Assay and use it offline
 
 Assay can be installed like an app, with its own icon and window, and it
 opens without a connection.
@@ -477,8 +499,9 @@ and work offline. Nothing is sent anywhere.
 |---|---|
 | Recently viewed data (blocks, transactions, addresses, mempool) | Up to 7 days, at most 500 entries |
 | Block headers used by the difficulty and total-work checks and the history charts (about 80 bytes each) | Until you clear them |
+| The full header chain, if you turned it on (~78 MB) | Until you click **Delete stored headers** |
 | The last 50 mempool-chart samples | Until pruned with the rest of the cache |
-| Your endpoint, live updates on/off, total-work opt-in, the last provider that worked, your theme choice | Until you change or clear them |
+| Your endpoint, live updates on/off, total-work and header-chain opt-ins, the last provider that worked, your theme choice | Until you change or clear them |
 | Providers left out of lookups for sending an invalid chain tip, with the reason | Until a tip check passes, or 24 hours |
 | Assay's own files and the three libraries it uses (about 650 KB), so it opens offline | Replaced by newer copies whenever you're online |
 
@@ -513,7 +536,7 @@ this check. Then open **Providers** and click **Check again**.
 **There's no "Install app" button.**
 Only Chromium-based browsers (Chrome, Edge, Brave, Samsung Internet)
 offer it, and only while Assay isn't already installed. In Safari, use
-**Add to Home Screen** or **Add to Dock**; see [task 4.8](#48-install-assay-and-use-it-offline).
+**Add to Home Screen** or **Add to Dock**; see [task 4.9](#49-install-assay-and-use-it-offline).
 Opening Assay from a plain `http://` address (other than `localhost`)
 disables installing and offline use.
 
