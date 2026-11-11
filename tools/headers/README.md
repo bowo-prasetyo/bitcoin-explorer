@@ -39,20 +39,23 @@ daily, and can be started by hand from the Actions tab. It runs
 1. re-checks every stored period from the genesis block;
 2. fetches each new finished period 10 blocks per request from
    Blockstream and mempool.space in turn, one request at a time per
-   provider and at least a second apart. A provider that rate-limits
-   (HTTP 429) is asked less often and waited for, as long as its
-   `Retry-After` asks or with growing pauses;
+   provider and at least a second apart. A provider that answers
+   HTTP 429 is set aside for a while (5 minutes, doubling up to an
+   hour) and the others carry on: Blockstream, for one, allows only about
+   720 requests per address per window, however slowly they come;
 3. checks it against Bitcoin's header rules from where the stored chain
    ends. If it fails, it fetches the period from each provider alone and
    keeps a copy that passes; if none does, the run fails and nothing is
    added;
-4. requires both providers to have the period's last block at that
-   height;
+4. asks every provider that isn't set aside for the period's last block
+   at that height: any that has a different block fails the run, and at
+   least one must answer;
 5. writes the file and the manifest, and the workflow commits every 20
    minutes.
 
-The first fill takes more than one run (Actions jobs stop at 6 hours);
-each run continues from the last commit. After that, a run adds about
+The first fill takes several runs (Actions jobs stop at 6 hours, and
+most of it comes from mempool.space alone once Blockstream's quota is
+used); each run continues from the last commit. After that, a run adds about
 one period every two weeks.
 
 ## Run it yourself

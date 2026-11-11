@@ -47,13 +47,17 @@ const B = 'https://b.example/api';
 // Mock providers serving the chain up to `tip`. `tamper(base, block)` can
 // change a block's JSON; `down` lists providers that refuse everything;
 // `hashAtHeight(base, h)` can override /block-height answers.
-function providers({ tip = LENGTH - 1, tips = {}, tamper = (base, b) => b, down = [], hashAtHeight = null } = {}) {
+function providers({ tip = LENGTH - 1, tips = {}, tamper = (base, b) => b, down = [], hashAtHeight = null, quota = {} } = {}) {
   const calls = [];
+  const served = new Map();
   const fetch = async url => {
     const base = [A, B].find(b => url.startsWith(b));
     const path = url.slice(base.length);
     calls.push({ base, path });
     if (down.includes(base)) return new Response('unavailable', { status: 503 });
+    // A request quota, like Blockstream's: past it, every answer is 429.
+    served.set(base, (served.get(base) ?? 0) + 1);
+    if (base in quota && served.get(base) > quota[base]) return new Response('Too Many Requests', { status: 429 });
 
     const top = tips[base] ?? tip;
     let m;
@@ -202,10 +206,48 @@ test("a provider with a different block at a period's end: fails", async () => {
   assert.equal(store.files.size, 0);
 });
 
-test('one provider down: nothing is added (two must agree)', async () => {
+test('one provider down: the other one carries the sync', async () => {
   const store = memoryStore();
   const r = await sync(store, providers({ down: [B] }));
+  assert.equal(r.status, 'up-to-date');
+  assert.equal(r.periods, 3);
+  assert.deepEqual(store.files.get(periodFile(2)), CHAIN.subarray(2 * PERIOD_BYTES, 3 * PERIOD_BYTES));
+});
+
+test('every provider down: nothing is added', async () => {
+  const store = memoryStore();
+  const r = await sync(store, providers({ down: [A, B] }));
   assert.equal(r.status, 'unavailable');
+  assert.equal(store.files.size, 0);
+});
+
+test('a provider out of its request quota is skipped, not waited for', async () => {
+  const store = memoryStore();
+  const logs = [];
+  const slept = [];
+  const mock = providers({ quota: { [B]: 150 } });
+  const client = makeClient({ fetch: mock.fetch, delayMs: 0, retries: 1, sleep: async ms => slept.push(ms), log: m => logs.push(m) });
+  const r = await syncPeriods({ store, client, providers: [A, B], params: PARAMS, log: m => logs.push(m) });
+
+  assert.equal(r.status, 'up-to-date');
+  assert.equal(r.periods, 3);
+  for (let i = 0; i < 3; i++) {
+    assert.deepEqual(store.files.get(periodFile(i)), CHAIN.subarray(i * PERIOD_BYTES, (i + 1) * PERIOD_BYTES));
+  }
+  // B was asked once past its quota, then parked: no back-off waits.
+  const pastQuota = mock.calls.filter(c => c.base === B).length - 150;
+  assert.equal(pastQuota, 1);
+  assert.ok(slept.every(ms => ms < 1000), slept.join(','));
+  assert.ok(logs.some(l => l === `rate limited by ${B}: asking other providers for 5 min`), logs.join('\n'));
+});
+
+test('a provider with a different block still fails the run, even when the other is rate limited', async () => {
+  const store = memoryStore();
+  const mock = providers({
+    quota: { [A]: 0 },
+    hashAtHeight: (base, h) => (base === B && h === RETARGET_INTERVAL - 1 ? 'ff'.repeat(32) : null)
+  });
+  await assert.rejects(sync(store, mock), new RegExp(`${B} has a different block at height 2,015`));
   assert.equal(store.files.size, 0);
 });
 
@@ -320,4 +362,30 @@ test('client: gives up after 8 rate limits in a row', async () => {
   const backoff = time.waits.filter(w => w >= 5000 && w % 5000 === 0);
   assert.ok(backoff.reduce((a, b) => a + b, 0) >= 500_000, backoff.join(','));
   assert.equal(client.spacing(A), 30000);
+});
+
+test('client: not patient: a 429 parks the provider and throws at once', async () => {
+  const time = fakeTime();
+  let ok = false;
+  const fetch = async () => (ok ? new Response('fine') : new Response('no', { status: 429 }));
+  const client = makeClient({ fetch, ...time });
+
+  await assert.rejects(client.text(A, '/x', { patient: false }), err => err.rateLimited === true);
+  assert.equal(client.limited(A), true);
+  assert.equal(client.limited(B), false);
+  assert.equal(client.parkedUntil(A), 300_000);
+  assert.ok(time.waits.every(w => w < 5000), time.waits.join(','));
+
+  // Still limited after the cool-down: parked twice as long.
+  time.sleep(300_000);
+  assert.equal(client.limited(A), false);
+  await assert.rejects(client.text(A, '/x', { patient: false }), err => err.rateLimited === true);
+  assert.equal(client.parkedUntil(A) - time.now(), 600_000);
+
+  // An answer clears it.
+  ok = true;
+  time.sleep(600_000);
+  assert.equal(await client.text(A, '/x', { patient: false }), 'fine');
+  assert.equal(client.limited(A), false);
+  assert.equal(client.parkedUntil(A), 0);
 });
