@@ -51,7 +51,7 @@ confirming a payment, checking a block, using your own node and more.
 |---|---|---|
 | **Blocks** | The header has valid proof of work. The difficulty follows Bitcoin's rules, traced back to the genesis block. The transaction list matches the header. Since block 227,931, the block's height is the one written in its coinbase. | That the block is on the chain with the most work. |
 | **Transactions** | The contents match the txid. Each input's amount comes from the transaction it spends, so the fee is right. A Merkle proof shows that the transaction is in its block, and every provider has that block at that height. The confirmations are counted header by header up to the providers' newest block, again with each new block. The size, weight and fee rate come from the block's witness commitment. | That the coins spent were still unspent. |
-| **The chain** | Independent providers agree on the newest block, and one that is ahead builds on the others' tips with the difficulty Bitcoin requires. Optional: the chain's total work, matching Bitcoin Core's `chainwork`. | Anything, with only one provider. |
+| **The chain** | Independent providers agree on the newest block, and one that is ahead builds on the others' tips with the difficulty Bitcoin requires. Optional: the chain's total work, matching Bitcoin Core's `chainwork`, and the full header chain, every header checked from the genesis block. | Anything, with only one provider. |
 | **Addresses, mempool, fees** | Nothing. These are shown as reported and marked **Not verified**. | Balances need the full UTXO set, which only full nodes keep. |
 
 Every check, with exactly what it proves and doesn't, is in
@@ -90,6 +90,9 @@ Every check, with exactly what it proves and doesn't, is in
   updates on/off, and a form to **use your own node**.
 - **Works offline-first:** the last copy of each page shows instantly,
   with its age, even when providers can't be reached.
+- **Full header chain (opt-in):** every header since 2009, downloaded
+  once from the site, checked in a background worker and kept in the
+  browser.
 - **Installable app that opens offline:** install it from Chrome, Edge
   or Safari; after one visit it starts with no connection and shows the
   pages you viewed, clearly marked as saved.
@@ -237,6 +240,7 @@ the browser suites cover.
 | `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |
 | `headerchain.js` | Checks a run of raw headers against Bitcoin's header rules and adds up their work (groundwork for a full header chain; not used by any page yet) |
 | `sha256.js` | Synchronous SHA-256, for hashing many headers fast |
+| `headersync.js`, `headerworker.js` | Downloads, checks and stores the full header chain (in a worker) |
 | `components/` | Views, plus shared pieces: `DataStatus`, `VerifyBadge`, `VerifySummary`, `ProviderNote`, `SearchBox`, `CopyButton`, `GlossaryTerm` |
 | `docs/` | User guide, verification reference, glossary |
 | `tests/` | Unit tests; `tests/e2e/` holds the browser tests |

@@ -4,13 +4,16 @@
 // Stores:
 //   cache   - everything the refreshers show: { id, timestamp, data }.
 //             Pruned by age and size at startup (pruneCache).
-//   headers - reserved for block headers used by in-browser verification
-//             (VISION.md, phase 3).
+//   headers - single raw headers fetched for checks, keyed by height
+//             (verify.js); always re-verified when read.
+//   periods - the full header chain, one record per difficulty period:
+//             { index, bytes: ArrayBuffer of 2,016 raw headers, tip }
+//             (headersync.js). Opt-in, never pruned.
 
 // Named before the project became Assay; renaming it would discard every
 // visitor's cache.
 const DB_NAME = 'btc-explorer';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const CACHE_LIMITS = {
   maxAgeMs: 7 * 24 * 3600 * 1000, // a week
@@ -40,6 +43,10 @@ export async function initDB() {
         db.createObjectStore('headers', { keyPath: 'height' });
       }
 
+      if (!db.objectStoreNames.contains('periods')) {
+        db.createObjectStore('periods', { keyPath: 'index' });
+      }
+
       const cache = db.objectStoreNames.contains('cache')
         ? tx.objectStore('cache')
         : db.createObjectStore('cache', { keyPath: 'id' });
@@ -51,7 +58,14 @@ export async function initDB() {
 
     request.onsuccess = e => {
       db = e.target.result;
+      // A newer version of the app in another tab needs to upgrade the
+      // database: let it, instead of blocking it until this tab closes.
+      db.onversionchange = () => db.close();
       resolve(db);
+    };
+
+    request.onblocked = () => {
+      console.warn('Waiting for other Assay tabs to close before upgrading local storage');
     };
 
     request.onerror = () => reject(request.error);
@@ -79,6 +93,25 @@ export async function get(storeName, key) {
 
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
+  });
+}
+
+// Number of records in a store.
+export async function count(storeName) {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(storeName, 'readonly').objectStore(storeName).count();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// Deletes every record whose key is `fromKey` or above.
+export async function deleteFrom(storeName, fromKey) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).delete(IDBKeyRange.lowerBound(fromKey));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 }
 

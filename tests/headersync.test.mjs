@@ -12,59 +12,19 @@ import {
   MANIFEST
 } from '../tools/headers/sync.mjs';
 import { checkHeaders } from '../headerchain.js';
-import { doubleSha256Into } from '../sha256.js';
-import { parseHeaderBytes, targetFromBits } from '../spv.js';
-import { nextBits, RETARGET_INTERVAL } from '../difficulty.js';
+import { parseHeaderBytes } from '../spv.js';
+import { RETARGET_INTERVAL } from '../difficulty.js';
+import { mineChain, hashAt, paramsFor } from './mined-chain.mjs';
 
 // ---------------------------------------------------------------
 // A test chain: mined at regtest's easy limit, retargets included
 // ---------------------------------------------------------------
 
-const EASY_BITS = 0x207fffff;
-const LIMIT = targetFromBits(EASY_BITS);
 const LENGTH = 3 * RETARGET_INTERVAL + 300; // three full periods and a bit
 
-function mineChain(n) {
-  const buf = new Uint8Array(n * 80);
-  const view = new DataView(buf.buffer);
-  const hash = new Uint8Array(32);
-  let prev = new Uint8Array(32);
-  let time = 1_700_000_000;
-  let bits = EASY_BITS;
-  let periodStart = 0;
-
-  for (let i = 0; i < n; i++) {
-    const o = i * 80;
-    time += 600;
-    if (i > 0 && i % RETARGET_INTERVAL === 0) bits = nextBits(bits, periodStart, time - 600, LIMIT).bits;
-    if (i % RETARGET_INTERVAL === 0) periodStart = time;
-    const target = targetFromBits(bits);
-
-    view.setInt32(o, 0x20000000, true);
-    buf.set(prev, o + 4);
-    buf.fill(i & 0xff, o + 36, o + 68);
-    view.setUint32(o + 68, time, true);
-    view.setUint32(o + 72, bits, true);
-
-    for (let nonce = 0; ; nonce++) {
-      view.setUint32(o + 76, nonce, true);
-      doubleSha256Into(buf, o, 80, hash);
-      if (BigInt('0x' + Buffer.from(hash).reverse().toString('hex')) <= target) break;
-    }
-    prev = hash.slice();
-  }
-  return buf;
-}
-
 const CHAIN = mineChain(LENGTH);
-const hashAt = h => {
-  const out = new Uint8Array(32);
-  doubleSha256Into(CHAIN, h * 80, 80, out);
-  return Buffer.from(out).reverse().toString('hex');
-};
-const HASHES = Array.from({ length: LENGTH }, (_, h) => hashAt(h));
-
-const PARAMS = { genesisHash: HASHES[0], powLimit: LIMIT, minVersions: [] };
+const HASHES = Array.from({ length: LENGTH }, (_, h) => hashAt(CHAIN, h));
+const PARAMS = paramsFor(CHAIN);
 
 // Esplora's block JSON, as /blocks/:height returns it.
 function blockJson(h) {

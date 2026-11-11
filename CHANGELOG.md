@@ -9,6 +9,14 @@ against the live data providers.
 
 ### Added
 
+- **Full header chain (opt-in).** A card on the home page downloads
+  every block header of each finished difficulty period from Assay's own
+  site (~78 MB once, then ~160 KB every two weeks), checks each one
+  from the genesis block against Bitcoin's header rules in a background
+  worker, and keeps them in the browser. It shows the total work up to
+  the last stored block, with Core's `chainwork` value, and whether the
+  providers have that block. Stored headers are checked again on every
+  visit. Pages don't use them for their checks yet.
 - **Light mode.** Assay follows the device's light or dark setting, and
   switches live when it changes. A **Theme** choice in the footer
   (System, Light, Dark) overrides it and is remembered. The theme is

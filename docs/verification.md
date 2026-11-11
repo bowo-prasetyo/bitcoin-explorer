@@ -25,6 +25,7 @@ For how to read the badges on screen, see the
 | [Witness data](#witness-data) | Transaction pages | Once inclusion is verified; blocks over 500 kB on request |
 | [Chain tip agreement](#chain-tip-agreement) | Home page; Providers page | Always |
 | [Total work behind the tip](#total-work-behind-the-tip) | Home page | On request the first time, then automatically |
+| [Full header chain](#full-header-chain) | Home page | Opt-in; then on every visit |
 | [Not verified](#not-verified) | Addresses, mempool, fees | Never: shown as reported |
 
 A failing check is red and names the check that failed. A check that
@@ -325,6 +326,40 @@ only new ones are fetched.
 **Doesn't prove** that every block in a period really has its first
 header's difficulty. Mainnet's rules require it, but this check doesn't
 link every header to the next.
+
+## Full header chain
+
+An opt-in on the home page: your browser downloads every block header of
+each finished difficulty period from Assay's own site (about 160 KB per
+period, ~78 MB in all), checks each one, and keeps them.
+
+**Checks**, for every header from the genesis block on, the same rules
+Bitcoin Core applies to headers:
+
+- It points to the header before it; the first one is the genesis block.
+- Its hash meets the target its difficulty encodes, within mainnet's
+  limit.
+- Its difficulty is the one required: unchanged inside a period, the
+  retarget at a period start.
+- Its timestamp is later than the median of the previous 11 blocks'.
+- Its version is at least what BIP34, BIP66 and BIP65 require from their
+  activation heights.
+- The providers have the last stored block at that height.
+
+The total work is added up header by header and shown with the same
+`chainwork` value Bitcoin Core reports for that block.
+
+The files are only a way to deliver the headers: a file that doesn't
+continue the checked chain exactly is rejected, and nothing from it on is
+stored. What is stored is checked again from the genesis block on every
+visit, and anything that fails is deleted. New periods are fetched at
+most twice a day, or when you click **Check for new headers**.
+
+**Doesn't prove** anything about the newest blocks, up to about two
+weeks of them, which are in no finished period yet. Block and transaction
+pages don't use the stored headers for their checks yet. And, like any
+light client, it can't see a chain with more work that neither the site
+nor any provider shows it.
 
 ## Not verified
 
