@@ -20,8 +20,8 @@
 //      it fails, fetches it again from each provider alone, so one bad
 //      provider can't block the run, and names the one that failed;
 //   5. requires every provider that answers to have the period's last
-//      block at that height, and at least two to answer (or the only
-//      one, when just one is configured);
+//      block at that height, and at least one to answer (a provider that
+//      is rate limited is not waited for: it just doesn't answer);
 //   6. writes the period file and the manifest before starting the next,
 //      so progress survives an interrupted run.
 
@@ -128,10 +128,17 @@ function manifestBytes(periods, state, network, now) {
 // provider, at least `delayMs` apart, a timeout, and retries.
 //
 // Rate limits (HTTP 429) slow that provider down: its spacing doubles (up
-// to 30 s) and eases back by 5 % per successful request. The request waits
-// as long as Retry-After asks (up to 5 minutes), or 5, 10, 20 ... 120 s,
-// and gives up after `rateLimitRetries` of them. Network errors and 5xx
-// are retried `retries` times, after 1, 2, 4, 8 s.
+// to 30 s) and eases back by 5 % per successful request. Some providers
+// limit requests per window rather than per second (Blockstream refused
+// for 18+ minutes after ~720 requests, however slowly they came), so a
+// 429 also parks the provider for a cool-down: 5 minutes, doubling up to
+// an hour. Then, by request:
+//   patient (default): wait as long as Retry-After asks (up to 5 min), or
+//     5, 10, 20 ... 120 s, and give up after `rateLimitRetries` of them;
+//   { patient: false }: throw a RateLimited error at once, so the caller
+//     can ask another provider; `limited(base)` says whether a provider is
+//     parked.
+// Network errors and 5xx are retried `retries` times, after 1, 2, 4, 8 s.
 // `fetch`, `sleep` and `now` can be replaced in tests.
 export function makeClient({
   fetch = globalThis.fetch,
@@ -146,7 +153,18 @@ export function makeClient({
   const MAX_SPACING = 30_000;
   const nextAt = new Map();
   const spacing = new Map();
+  const parkedUntil = new Map();
+  const parkedTimes = new Map();
   let requests = 0;
+
+  // Parks `base` after a rate limit: 5 min, 10, 20, 40, then 60.
+  function park(base) {
+    const n = parkedTimes.get(base) ?? 0;
+    parkedTimes.set(base, n + 1);
+    const cooldown = Math.min(3_600_000, 300_000 * 2 ** n);
+    parkedUntil.set(base, now() + cooldown);
+    return cooldown;
+  }
 
   const spacingOf = base => spacing.get(base) ?? delayMs;
 
@@ -158,7 +176,7 @@ export function makeClient({
     return Number.isFinite(ms) && ms >= 0 ? Math.min(ms, 300_000) : null;
   }
 
-  async function get(base, path) {
+  async function get(base, path, { patient = true } = {}) {
     let failures = 0;
     let limited = 0;
 
@@ -182,11 +200,23 @@ export function makeClient({
 
       if (res?.ok) {
         spacing.set(base, Math.max(delayMs, Math.round(spacingOf(base) * 0.95)));
+        parkedUntil.delete(base);
+        parkedTimes.delete(base);
         return res;
+      }
+
+      if (res?.status === 429 && !patient) {
+        spacing.set(base, Math.min(MAX_SPACING, spacingOf(base) * 2));
+        const cooldown = park(base);
+        log(`rate limited by ${base}: asking other providers for ${Math.round(cooldown / 60000)} min`);
+        const err = new Error(`${base}${path}: HTTP 429`);
+        err.rateLimited = true;
+        throw err;
       }
 
       if (res?.status === 429) {
         if (++limited > rateLimitRetries) {
+          park(base);
           throw new Error(`${base}${path}: HTTP 429 (rate limited ${limited - 1} times in a row)`);
         }
         const slower = Math.min(MAX_SPACING, spacingOf(base) * 2);
@@ -210,15 +240,19 @@ export function makeClient({
   }
 
   return {
-    async text(base, path) {
-      return (await (await get(base, path)).text()).trim();
+    async text(base, path, opts) {
+      return (await (await get(base, path, opts)).text()).trim();
     },
-    async json(base, path) {
-      return (await get(base, path)).json();
+    async json(base, path, opts) {
+      return (await get(base, path, opts)).json();
     },
     get requests() {
       return requests;
     },
+    // Is this provider parked after a rate limit?
+    limited: base => (parkedUntil.get(base) ?? 0) > now(),
+    // When the earliest parked provider among `bases` may be asked again.
+    parkedUntil: base => parkedUntil.get(base) ?? 0,
     // Current spacing per provider (ms), for logs and tests.
     spacing: base => spacingOf(base)
   };
@@ -226,7 +260,9 @@ export function makeClient({
 
 // The period starting at `start`, as raw bytes, from `providers` in turn
 // (newest blocks first, as /blocks/:height returns them). A provider that
-// fails a request is skipped for the rest of the period.
+// fails a request is skipped for the rest of the period; one that is rate
+// limited is skipped while it is parked, and waited for only when every
+// provider is.
 export async function fetchPeriod(client, start, providers) {
   const bytes = new Uint8Array(PERIOD_BYTES);
   const have = new Uint8Array(RETARGET_INTERVAL);
@@ -239,12 +275,16 @@ export async function fetchPeriod(client, start, providers) {
     let lastError = null;
 
     while (blocks === null && live.length) {
-      const base = live[turn++ % live.length];
+      const free = live.filter(p => !client.limited?.(p));
+      // All parked: wait for the one free soonest, patiently.
+      const base = free.length
+        ? free[turn++ % free.length]
+        : live.reduce((a, b) => (client.parkedUntil(b) < client.parkedUntil(a) ? b : a));
       try {
-        blocks = await client.json(base, `/blocks/${next}`);
+        blocks = await client.json(base, `/blocks/${next}`, { patient: !free.length });
       } catch (err) {
         lastError = err;
-        live.splice(live.indexOf(base), 1);
+        if (!err.rateLimited) live.splice(live.indexOf(base), 1);
       }
     }
 
@@ -301,11 +341,20 @@ export async function syncPeriods({
   let { periods, state } = await verifyStored(store, params);
   log(`stored: ${fmt(periods)} periods${state ? `, up to block ${fmt(state.height)}` : ''}, all checked from the genesis block`);
 
-  const needed = Math.min(2, providers.length);
+  // Provider answers are asked without waiting out rate limits: a parked
+  // provider simply doesn't answer this time.
+  const ask = async (p, path) => {
+    if (client.limited?.(p)) return null;
+    try {
+      return await client.text(p, path, { patient: false });
+    } catch {
+      return null;
+    }
+  };
 
   const tips = await Promise.all(providers.map(async p => {
     try {
-      const h = Number(await client.text(p, '/blocks/tip/height'));
+      const h = Number(await ask(p, '/blocks/tip/height') ?? NaN);
       return Number.isInteger(h) ? h : null;
     } catch {
       return null;
@@ -314,8 +363,8 @@ export async function syncPeriods({
 
   const answered = tips.filter(h => h !== null);
 
-  if (answered.length < needed) {
-    return { status: 'unavailable', periods, added: 0, note: `only ${answered.length} of ${providers.length} providers answered` };
+  if (!answered.length) {
+    return { status: 'unavailable', periods, added: 0, note: 'no provider answered' };
   }
 
   const tipHeight = Math.min(...answered);
@@ -365,14 +414,10 @@ export async function syncPeriods({
       log(`  used the copy that passed; the others sent data that fails Bitcoin's rules`);
     }
 
-    // Every provider that answers must have this period's last block.
-    const hashes = await Promise.all(providers.map(async p => {
-      try {
-        return (await client.text(p, `/block-height/${end}`)).toLowerCase();
-      } catch {
-        return null;
-      }
-    }));
+    // Every provider that answers must have this period's last block, and
+    // at least one must answer. Each header is already checked against
+    // Bitcoin's rules; this catches a provider on another chain.
+    const hashes = await Promise.all(providers.map(async p => (await ask(p, `/block-height/${end}`))?.toLowerCase() ?? null));
 
     const differing = providers.filter((p, i) => hashes[i] !== null && hashes[i] !== r.state.hash);
 
@@ -381,8 +426,8 @@ export async function syncPeriods({
         `than the checked period (${r.state.hash})`);
     }
 
-    if (hashes.filter(Boolean).length < needed) {
-      return { status: 'unconfirmed', periods, added, tipHeight, note: `not enough providers confirmed block ${fmt(end)}` };
+    if (!hashes.some(Boolean)) {
+      return { status: 'unconfirmed', periods, added, tipHeight, note: `no provider could confirm block ${fmt(end)}` };
     }
 
     await store.write(periodFile(periods), bytes);
