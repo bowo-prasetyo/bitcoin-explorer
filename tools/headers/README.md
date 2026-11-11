@@ -19,6 +19,13 @@ small:
 | `periods/00000.bin`, `periods/00001.bin`, … | Period *n*: the 2,016 raw 80-byte headers of blocks 2,016·*n* to 2,016·*n* + 2,015, in order (161,280 bytes) |
 | `manifest.json` | Number of periods, and the chain state after the last one (height, hash, chainwork and what checking the next period needs) |
 
+The [Deploy site workflow](../../.github/workflows/pages.yml) publishes
+them with the site under `headers/`, for example
+`https://bowo-prasetyo.github.io/bitcoin-explorer/headers/manifest.json`.
+It runs after every Header files run as well as on every push to
+`main`. The service worker leaves these requests alone: they are Bitcoin
+data, not part of the app.
+
 Only periods whose last block is at least 100 blocks below every
 provider's tip are published. The newest, unfinished period is never in
 a file.

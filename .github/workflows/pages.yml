@@ -1,0 +1,68 @@
+name: Deploy site
+
+# Publishes the site to GitHub Pages: the files on `main`, plus the header
+# files from the `headers` branch under headers/ (see tools/headers).
+# Needs Settings → Pages → Source set to "GitHub Actions".
+#
+# Runs on every push to main, after every run of the Header files
+# workflow (its pushes use the workflow token, which can't start other
+# workflows directly), and on demand.
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: ['Header files']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; never cancel one halfway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: site
+
+      # The files exactly as committed (no Jekyll step: the app needs none,
+      # and the docs are read on GitHub).
+      - name: Assemble the site, with the header files under headers/
+        run: |
+          mkdir _site
+          git -C site archive HEAD | tar -x -C _site
+          rm -rf _site/.github
+
+          if git -C site fetch --quiet --depth 1 origin headers; then
+            mkdir _site/headers
+            git -C site archive FETCH_HEAD | tar -x -C _site/headers
+            if [ -f _site/headers/manifest.json ]; then
+              echo "Header files: $(node -p "require('./_site/headers/manifest.json').periods") periods"
+            fi
+          else
+            echo "No headers branch yet: deploying the site without header files."
+          fi
+
+          du -sh _site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

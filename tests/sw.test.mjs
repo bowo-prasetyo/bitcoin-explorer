@@ -53,6 +53,10 @@ test('strategyFor: own files, pinned libraries, and nothing else', () => {
   // Bitcoin data is never cached by the service worker.
   assert.equal(s('https://blockstream.info/api/blocks/tip/height'), 'pass');
   assert.equal(s('https://mempool.space/api/tx/abc'), 'pass');
+  // Not even the header files the site itself serves (tools/headers).
+  assert.equal(s('https://example.org/bitcoin-explorer/headers/periods/00000.bin'), 'pass');
+  assert.equal(s('https://example.org/bitcoin-explorer/headers/manifest.json'), 'pass');
+  assert.equal(s('https://example.org/headers/periods/00001.bin'), 'pass');
   // A different version of a library is not trusted from the cache.
   assert.equal(s('https://unpkg.com/vue@3.5.14/dist/vue.global.prod.js'), 'pass');
   // Only reads.

@@ -9,7 +9,7 @@ against the live data providers, which automated tests can't reach.
 - CI is green on the `main` commit you're releasing: the **unit** and
   **browser** jobs in `.github/workflows/test.yml`.
 - The Pages deployment of that commit finished
-  (**Actions → pages build and deployment**).
+  (**Actions → Deploy site**, `.github/workflows/pages.yml`).
 
 ## 2. Live check (about 10 minutes)
 
