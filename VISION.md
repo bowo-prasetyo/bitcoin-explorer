@@ -145,11 +145,30 @@ Since phase 3, work ships as individual features:
   app's files are network-first, so online visits always run the
   deployed version without a build step to version them.
 
-### Next ideas
+### Full header chain (in progress)
 
-- Link every header inside each period. That needs all ~925,000 headers
-  (~74 MB), so it's likely only worthwhile with a bulk-header source or a
-  user's own node.
+The goal: keep every block header from genesis (~975,000 headers, ~78 MB)
+and check each one, so "is this block on the chain with the most work?"
+is measured by the browser instead of taken from providers agreeing. Opt-in,
+like the total-work check.
+
+1. ✅ A checker for runs of raw headers (`headerchain.js`): each header
+   links to the one before, meets its target, has the difficulty the
+   rules require (retargets included), a timestamp later than the median
+   of the previous 11, and the versions BIP34/66/65 require; it adds up
+   chainwork as it goes and can resume where a run ended. A synchronous
+   SHA-256 (`sha256.js`) makes it fast: about 1.4 s for the whole chain
+   in Chromium on a server CPU, against 5–6 s for the hashing alone with
+   `crypto.subtle`.
+2. Bulk headers: Esplora has no header-range endpoint (10 blocks per
+   request would be ~97,000 requests), so a CI job publishes one static
+   file per difficulty period. They are transport only: every byte is
+   checked from genesis.
+3. Storage (one record per period) and a sync in a worker, with progress.
+4. Following the tip and reorganisations: the chain with the most work
+   wins, not the one most providers report.
+5. Block, transaction and chain checks read from the local chain when it
+   is synced, with today's checks as the fallback.
 
 ### Out of scope for now
 

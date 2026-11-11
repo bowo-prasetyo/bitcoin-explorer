@@ -17,7 +17,7 @@ export const TARGET_TIMESPAN = 14 * 24 * 60 * 60; // two weeks, seconds
 export const GENESIS_BITS = 0x1d00ffff;
 
 // Full-precision mainnet limit (consensus.powLimit), not its compact form.
-const POW_LIMIT = (1n << 224n) - 1n;
+export const POW_LIMIT = (1n << 224n) - 1n;
 
 export function periodStart(height) {
   return height - (height % RETARGET_INTERVAL);
@@ -39,8 +39,9 @@ export function headersNeeded(height) {
   return needed;
 }
 
-// Bitcoin Core's CalculateNextWorkRequired.
-export function nextBits(prevBits, firstTime, lastTime) {
+// Bitcoin Core's CalculateNextWorkRequired. `powLimit` is mainnet's
+// unless a test chain passes its own.
+export function nextBits(prevBits, firstTime, lastTime, powLimit = POW_LIMIT) {
   const actualTimespan = lastTime - firstTime;
 
   const clampedTimespan = Math.min(
@@ -51,8 +52,8 @@ export function nextBits(prevBits, firstTime, lastTime) {
   let target = targetFromBits(prevBits);
   target = (target * BigInt(clampedTimespan)) / BigInt(TARGET_TIMESPAN);
 
-  if (target > POW_LIMIT) {
-    target = POW_LIMIT;
+  if (target > powLimit) {
+    target = powLimit;
   }
 
   return {

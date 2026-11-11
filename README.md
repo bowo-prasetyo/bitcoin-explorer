@@ -234,6 +234,8 @@ the browser suites cover.
 | `chainwork.js` | Total work behind a tip, from one header per difficulty period |
 | `inputs.js` | Checks inputs against the raw transactions they spend |
 | `difficulty.js` | Bitcoin's difficulty retarget rules, checked per block |
+| `headerchain.js` | Checks a run of raw headers against Bitcoin's header rules and adds up their work (groundwork for a full header chain; not used by any page yet) |
+| `sha256.js` | Synchronous SHA-256, for hashing many headers fast |
 | `components/` | Views, plus shared pieces: `DataStatus`, `VerifyBadge`, `VerifySummary`, `ProviderNote`, `SearchBox`, `CopyButton`, `GlossaryTerm` |
 | `docs/` | User guide, verification reference, glossary |
 | `tests/` | Unit tests; `tests/e2e/` holds the browser tests |

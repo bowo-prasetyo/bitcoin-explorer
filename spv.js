@@ -117,15 +117,25 @@ export function parseHeader(headerHex) {
     throw new Error(`A block header is 80 bytes; got ${headerHex.length / 2}`);
   }
 
-  const bytes = hexToBytes(headerHex);
+  return parseHeaderBytes(hexToBytes(headerHex));
+}
+
+// The same fields, read from 80 raw bytes at `offset` (for header chains
+// stored as bytes, with no hex round-trip).
+export function parseHeaderBytes(bytes, offset = 0) {
+  if (bytes.length - offset < 80) {
+    throw new Error('A block header is 80 bytes');
+  }
+
+  const displayHex = (from, to) => bytesToHex(bytes.slice(offset + from, offset + to).reverse());
 
   return {
-    version: readUInt32LE(bytes, 0),
-    previousBlockHash: reverseHex(headerHex.slice(8, 72)),
-    merkleRoot: reverseHex(headerHex.slice(72, 136)),
-    timestamp: readUInt32LE(bytes, 68),
-    bits: readUInt32LE(bytes, 72),
-    nonce: readUInt32LE(bytes, 76)
+    version: readUInt32LE(bytes, offset),
+    previousBlockHash: displayHex(4, 36),
+    merkleRoot: displayHex(36, 68),
+    timestamp: readUInt32LE(bytes, offset + 68),
+    bits: readUInt32LE(bytes, offset + 72),
+    nonce: readUInt32LE(bytes, offset + 76)
   };
 }
 
