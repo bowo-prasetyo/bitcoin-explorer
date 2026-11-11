@@ -164,6 +164,13 @@ like the total-work check.
    request would be ~97,000 requests), so a CI job publishes one static
    file per difficulty period. They are transport only: every byte is
    checked from genesis.
+   - ✅ A daily workflow fetches each finished period from Blockstream
+     and mempool.space in turn, checks it from the genesis block, and
+     commits it to the `headers` branch ([tools/headers](tools/headers/README.md)).
+   - Serve them with the site: deploy Pages from a workflow that adds
+     the `headers` branch under `/headers/` (needs the Pages source set
+     to GitHub Actions). Release assets were ruled out: browsers can't
+     read them cross-origin.
 3. Storage (one record per period) and a sync in a worker, with progress.
 4. Following the tip and reorganisations: the chain with the most work
    wins, not the one most providers report.

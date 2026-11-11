@@ -1,0 +1,81 @@
+name: Header files
+
+# Keeps the `headers` branch up to date: one file of 2,016 raw block
+# headers per finished difficulty period, plus manifest.json. See
+# tools/headers/README.md. Every period is checked against Bitcoin's
+# header rules from the genesis block before it is committed.
+#
+# The first fill is about 97,000 requests, more than one run allows; each
+# run commits as it goes and the next one continues. After that, a run
+# adds about one period every two weeks.
+
+on:
+  schedule:
+    - cron: '41 4 * * *' # daily
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: header-files
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: site
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check out the headers branch, or start it
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REMOTE="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$REMOTE" headers > /dev/null; then
+            git clone --quiet --depth 1 --branch headers "$REMOTE" data
+          else
+            echo "No headers branch yet: starting one from the genesis block."
+            git init --quiet -b headers data
+            git -C data remote add origin "$REMOTE"
+          fi
+          git -C data config user.name 'github-actions[bot]'
+          git -C data config user.email '41898333+github-actions[bot]@users.noreply.github.com'
+
+      # Batches of 20 minutes, each committed and pushed, so a run that is
+      # cut short loses at most one batch. Stops after ~5 hours.
+      - name: Fetch, check and commit finished periods
+        run: |
+          stop=$((SECONDS + 300 * 60))
+          while :; do
+            set +e
+            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \
+              site/tools/headers/sync-headers.mjs --dir data --max-minutes 20
+            code=$?
+            set -e
+
+            if [ -n "$(git -C data status --porcelain)" ]; then
+              tip=$(node -p "require('./data/manifest.json').tip.height")
+              periods=$(node -p "require('./data/manifest.json').periods")
+              git -C data add -A
+              git -C data commit --quiet -m "Header files up to block ${tip} (${periods} periods)"
+              git -C data push --quiet origin HEAD:headers
+              echo "Committed: ${periods} periods, up to block ${tip}."
+            fi
+
+            if [ "$code" -eq 3 ] && [ "$SECONDS" -lt "$stop" ]; then
+              continue
+            fi
+            if [ "$code" -eq 3 ]; then
+              echo "Time is up for this run; the next run continues."
+              exit 0
+            fi
+            exit "$code"
+          done
