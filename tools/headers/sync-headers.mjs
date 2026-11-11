@@ -4,7 +4,7 @@
 // `headers` branch). See sync.mjs for what is checked, and README.md.
 //
 //   node tools/headers/sync-headers.mjs --dir <path> [--max-minutes 20]
-//        [--max-periods N] [--delay-ms 250] [--provider URL ...]
+//        [--max-periods N] [--delay-ms 1000] [--provider URL ...]
 //
 // Exit codes: 0 up to date (or providers unavailable: a warning, try
 // again later), 3 stopped at a limit with more to add, 1 a check failed.
@@ -20,13 +20,13 @@ const { values } = parseArgs({
     dir: { type: 'string' },
     'max-minutes': { type: 'string', default: '20' },
     'max-periods': { type: 'string' },
-    'delay-ms': { type: 'string', default: '250' },
+    'delay-ms': { type: 'string', default: '1000' },
     provider: { type: 'string', multiple: true }
   }
 });
 
 if (!values.dir) {
-  console.error('Usage: sync-headers.mjs --dir <path> [--max-minutes 20] [--max-periods N] [--delay-ms 250] [--provider URL ...]');
+  console.error('Usage: sync-headers.mjs --dir <path> [--max-minutes 20] [--max-periods N] [--delay-ms 1000] [--provider URL ...]');
   process.exit(2);
 }
 

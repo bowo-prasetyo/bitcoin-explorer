@@ -245,16 +245,79 @@ test('fetchPeriod: pages of 10, newest first, and a gap is an error', async () =
   await assert.rejects(fetchPeriod(quickClient(gap.fetch), 0, [A]), /No provider returned block 2,010/);
 });
 
-test('client: retries 5xx and 429 with back-off, not 404', async () => {
+test('client: retries network errors and 5xx after 1, 2, 4, 8 s; not 404', async () => {
   let n = 0;
   const waits = [];
-  const fetch = async () => (++n < 3 ? new Response('busy', { status: n === 1 ? 503 : 429 }) : new Response(' 42 '));
+  const fetch = async () => (++n < 3 ? new Response('busy', { status: 503 }) : new Response(' 42 '));
   const client = makeClient({ fetch, delayMs: 0, sleep: async ms => waits.push(ms) });
   assert.equal(await client.text(A, '/x'), '42');
   assert.deepEqual(waits, [1000, 2000]);
   assert.equal(client.requests, 3);
 
+  const down = makeClient({ fetch: async () => new Response('x', { status: 500 }), delayMs: 0, sleep: async () => {} });
+  await assert.rejects(down.text(A, '/x'), /HTTP 500/);
+  assert.equal(down.requests, 5); // 1 + 4 retries
+
   const missing = makeClient({ fetch: async () => new Response('no', { status: 404 }), delayMs: 0, sleep: async () => {} });
   await assert.rejects(missing.text(A, '/x'), /HTTP 404/);
   assert.equal(missing.requests, 1);
+});
+
+// A clock that only moves when the client sleeps.
+function fakeTime() {
+  let t = 0;
+  const waits = [];
+  return { now: () => t, sleep: async ms => { waits.push(ms); t += ms; }, waits };
+}
+
+test('client: one request per second per provider by default', async () => {
+  const time = fakeTime();
+  const client = makeClient({ fetch: async () => new Response('1'), ...time });
+  await client.text(A, '/a');
+  await client.text(A, '/b');
+  await client.text(B, '/c'); // another provider: no wait
+  await client.text(A, '/d');
+  assert.deepEqual(time.waits, [1000, 1000]);
+});
+
+test('client: a rate limit slows that provider down, waits, and eases back', async () => {
+  const time = fakeTime();
+  const logs = [];
+  let n = 0;
+  const fetch = async () => (++n <= 2 ? new Response('slow down', { status: 429 }) : new Response('ok'));
+  const client = makeClient({ fetch, ...time, log: m => logs.push(m) });
+
+  assert.equal(await client.text(A, '/x'), 'ok');
+  // Back-off 5 s, then 10 s; spacing doubled twice (1 -> 2 -> 4 s), then
+  // eased 5 % by the success.
+  assert.ok(time.waits.includes(5000) && time.waits.includes(10000), time.waits.join(','));
+  assert.equal(client.spacing(A), 3800);
+  assert.equal(client.spacing(B), 1000);
+  assert.match(logs[0], /^rate limited by https:\/\/a\.example\/api: waiting 5 s, then one request every 2\.0 s$/);
+
+  // Successes bring it back towards one a second, never below.
+  for (let i = 0; i < 100; i++) await client.text(A, '/y');
+  assert.equal(client.spacing(A), 1000);
+});
+
+test('client: Retry-After is honoured', async () => {
+  const time = fakeTime();
+  let n = 0;
+  const fetch = async () => (++n === 1
+    ? new Response('later', { status: 429, headers: { 'retry-after': '42' } })
+    : new Response('ok'));
+  const client = makeClient({ fetch, ...time });
+  await client.text(A, '/x');
+  assert.ok(time.waits.includes(42000), time.waits.join(','));
+});
+
+test('client: gives up after 8 rate limits in a row', async () => {
+  const time = fakeTime();
+  const client = makeClient({ fetch: async () => new Response('no', { status: 429 }), ...time });
+  await assert.rejects(client.text(A, '/x'), /HTTP 429 \(rate limited 8 times in a row\)/);
+  assert.equal(client.requests, 9);
+  // 5, 10, 20, 40, 80, 120, 120, 120 s of back-off: minutes, not seconds.
+  const backoff = time.waits.filter(w => w >= 5000 && w % 5000 === 0);
+  assert.ok(backoff.reduce((a, b) => a + b, 0) >= 500_000, backoff.join(','));
+  assert.equal(client.spacing(A), 30000);
 });
