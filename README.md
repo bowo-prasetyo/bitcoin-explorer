@@ -239,6 +239,7 @@ the browser suites cover.
 | `components/` | Views, plus shared pieces: `DataStatus`, `VerifyBadge`, `VerifySummary`, `ProviderNote`, `SearchBox`, `CopyButton`, `GlossaryTerm` |
 | `docs/` | User guide, verification reference, glossary |
 | `tests/` | Unit tests; `tests/e2e/` holds the browser tests |
+| `tools/headers/` | Builds the static header files on the `headers` branch, in CI ([README](tools/headers/README.md)); not loaded by the site |
 | `brand/`, `favicon.*`, `apple-touch-icon.png` | Logo, favicons and brand guide ([brand/README.md](brand/README.md)) |
 
 ### Documentation

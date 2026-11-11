@@ -1,0 +1,300 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  syncPeriods,
+  verifyStored,
+  makeClient,
+  fetchPeriod,
+  periodFile,
+  decodeState,
+  PERIOD_BYTES,
+  MANIFEST
+} from '../tools/headers/sync.mjs';
+import { checkHeaders } from '../headerchain.js';
+import { doubleSha256Into } from '../sha256.js';
+import { parseHeaderBytes, targetFromBits } from '../spv.js';
+import { nextBits, RETARGET_INTERVAL } from '../difficulty.js';
+
+// ---------------------------------------------------------------
+// A test chain: mined at regtest's easy limit, retargets included
+// ---------------------------------------------------------------
+
+const EASY_BITS = 0x207fffff;
+const LIMIT = targetFromBits(EASY_BITS);
+const LENGTH = 3 * RETARGET_INTERVAL + 300; // three full periods and a bit
+
+function mineChain(n) {
+  const buf = new Uint8Array(n * 80);
+  const view = new DataView(buf.buffer);
+  const hash = new Uint8Array(32);
+  let prev = new Uint8Array(32);
+  let time = 1_700_000_000;
+  let bits = EASY_BITS;
+  let periodStart = 0;
+
+  for (let i = 0; i < n; i++) {
+    const o = i * 80;
+    time += 600;
+    if (i > 0 && i % RETARGET_INTERVAL === 0) bits = nextBits(bits, periodStart, time - 600, LIMIT).bits;
+    if (i % RETARGET_INTERVAL === 0) periodStart = time;
+    const target = targetFromBits(bits);
+
+    view.setInt32(o, 0x20000000, true);
+    buf.set(prev, o + 4);
+    buf.fill(i & 0xff, o + 36, o + 68);
+    view.setUint32(o + 68, time, true);
+    view.setUint32(o + 72, bits, true);
+
+    for (let nonce = 0; ; nonce++) {
+      view.setUint32(o + 76, nonce, true);
+      doubleSha256Into(buf, o, 80, hash);
+      if (BigInt('0x' + Buffer.from(hash).reverse().toString('hex')) <= target) break;
+    }
+    prev = hash.slice();
+  }
+  return buf;
+}
+
+const CHAIN = mineChain(LENGTH);
+const hashAt = h => {
+  const out = new Uint8Array(32);
+  doubleSha256Into(CHAIN, h * 80, 80, out);
+  return Buffer.from(out).reverse().toString('hex');
+};
+const HASHES = Array.from({ length: LENGTH }, (_, h) => hashAt(h));
+
+const PARAMS = { genesisHash: HASHES[0], powLimit: LIMIT, minVersions: [] };
+
+// Esplora's block JSON, as /blocks/:height returns it.
+function blockJson(h) {
+  const f = parseHeaderBytes(CHAIN, h * 80);
+  return {
+    id: HASHES[h],
+    height: h,
+    version: f.version,
+    timestamp: f.timestamp,
+    bits: f.bits,
+    nonce: f.nonce,
+    merkle_root: f.merkleRoot,
+    previousblockhash: h === 0 ? null : f.previousBlockHash
+  };
+}
+
+const A = 'https://a.example/api';
+const B = 'https://b.example/api';
+
+// Mock providers serving the chain up to `tip`. `tamper(base, block)` can
+// change a block's JSON; `down` lists providers that refuse everything;
+// `hashAtHeight(base, h)` can override /block-height answers.
+function providers({ tip = LENGTH - 1, tips = {}, tamper = (base, b) => b, down = [], hashAtHeight = null } = {}) {
+  const calls = [];
+  const fetch = async url => {
+    const base = [A, B].find(b => url.startsWith(b));
+    const path = url.slice(base.length);
+    calls.push({ base, path });
+    if (down.includes(base)) return new Response('unavailable', { status: 503 });
+
+    const top = tips[base] ?? tip;
+    let m;
+    if (path === '/blocks/tip/height') return new Response(String(top));
+    if ((m = path.match(/^\/blocks\/(\d+)$/))) {
+      const from = Math.min(Number(m[1]), top);
+      const out = [];
+      for (let h = from; h > from - 10 && h >= 0; h--) out.push(tamper(base, blockJson(h)));
+      return Response.json(out);
+    }
+    if ((m = path.match(/^\/block-height\/(\d+)$/))) {
+      const h = Number(m[1]);
+      if (h > top) return new Response('Block not found', { status: 404 });
+      return new Response(hashAtHeight?.(base, h) ?? HASHES[h]);
+    }
+    return new Response('not found', { status: 404 });
+  };
+  return { fetch, calls };
+}
+
+function memoryStore() {
+  const files = new Map();
+  return {
+    files,
+    async read(path) { return files.get(path) ?? null; },
+    async write(path, bytes) { files.set(path, new Uint8Array(bytes)); }
+  };
+}
+
+const quickClient = fetch => makeClient({ fetch, delayMs: 0, retries: 1, sleep: async () => {} });
+
+const sync = (store, mock, opts = {}) => syncPeriods({
+  store,
+  client: quickClient(mock.fetch),
+  providers: [A, B],
+  params: PARAMS,
+  network: 'test',
+  ...opts
+});
+
+// ---------------------------------------------------------------
+
+test('test chain is valid by the header rules', () => {
+  assert.equal(checkHeaders(CHAIN, null, PARAMS).ok, true);
+});
+
+test('from nothing: adds every finished period, splits requests across providers', async () => {
+  const store = memoryStore();
+  const mock = providers(); // tip 6,347: periods end 2,015, 4,031, 6,047 (all ≥ 100 deep)
+  const r = await sync(store, mock);
+
+  assert.equal(r.status, 'up-to-date');
+  assert.equal(r.periods, 3);
+  assert.equal(r.added, 3);
+
+  for (let i = 0; i < 3; i++) {
+    const want = CHAIN.subarray(i * PERIOD_BYTES, (i + 1) * PERIOD_BYTES);
+    assert.deepEqual(store.files.get(periodFile(i)), want, `period ${i}`);
+  }
+
+  const manifest = JSON.parse(new TextDecoder().decode(store.files.get(MANIFEST)));
+  assert.equal(manifest.periods, 3);
+  assert.equal(manifest.network, 'test');
+  assert.equal(manifest.tip.height, 3 * RETARGET_INTERVAL - 1);
+  assert.equal(manifest.tip.hash, HASHES[3 * RETARGET_INTERVAL - 1]);
+  assert.equal(decodeState(manifest.tip).work, checkHeaders(CHAIN.subarray(0, 3 * PERIOD_BYTES), null, PARAMS).state.work);
+
+  // 202 page requests per period, about half to each provider.
+  const pages = mock.calls.filter(c => c.path.startsWith('/blocks/') && c.path !== '/blocks/tip/height');
+  assert.equal(pages.length, 3 * 202);
+  const fromA = pages.filter(c => c.base === A).length;
+  assert.ok(Math.abs(fromA - pages.length / 2) <= 3, `A served ${fromA} of ${pages.length}`);
+});
+
+test('a period is only added once its last block is 100 blocks below every tip', async () => {
+  const store = memoryStore();
+  // B lags: its tip 4,130 puts block 4,031 99 blocks deep, so only period 0.
+  const r = await sync(store, providers({ tips: { [B]: 4130 } }));
+  assert.equal(r.status, 'up-to-date');
+  assert.equal(r.periods, 1);
+  assert.equal(r.tipHeight, 4130);
+});
+
+test('resumes where it stopped, re-checking what is stored', async () => {
+  const store = memoryStore();
+  const first = await sync(store, providers(), { maxPeriods: 1 });
+  assert.equal(first.status, 'more');
+  assert.equal(first.periods, 1);
+
+  const mock = providers();
+  const second = await sync(store, mock);
+  assert.equal(second.status, 'up-to-date');
+  assert.equal(second.periods, 3);
+  assert.equal(second.added, 2);
+  // No request for period 0 again.
+  assert.ok(!mock.calls.some(c => c.path === `/blocks/${RETARGET_INTERVAL - 1}`));
+});
+
+test('stops at the deadline with more to do', async () => {
+  const store = memoryStore();
+  let t = 0;
+  const r = await sync(store, providers(), { now: () => t++ , deadline: 1 });
+  assert.equal(r.status, 'more');
+  assert.equal(r.added, 1);
+});
+
+test('up to date: nothing fetched but the tips', async () => {
+  const store = memoryStore();
+  await sync(store, providers());
+  const mock = providers();
+  const r = await sync(store, mock);
+  assert.equal(r.status, 'up-to-date');
+  assert.equal(r.added, 0);
+  assert.deepEqual(mock.calls.map(c => c.path), ['/blocks/tip/height', '/blocks/tip/height']);
+});
+
+test('one provider sending a bad block: the copy from the other is used', async () => {
+  const store = memoryStore();
+  const logs = [];
+  const mock = providers({
+    tamper: (base, b) => (base === A && b.height >= 1000 && b.height < 1100 ? { ...b, nonce: b.nonce + 1 } : b)
+  });
+  const r = await sync(store, mock, { log: m => logs.push(m) });
+  assert.equal(r.periods, 3);
+  assert.deepEqual(store.files.get(periodFile(0)), CHAIN.subarray(0, PERIOD_BYTES));
+  // A alone fails where its altered block 1,000 no longer matches what
+  // block 1,001 points to; B's copy is the one stored.
+  assert.ok(logs.some(l => l === `  ${A}: block 1,001 doesn't build on block 1,000`), logs.join('\n'));
+  assert.ok(logs.some(l => /used the copy that passed/.test(l)));
+});
+
+test('every provider sending a bad block: fails, and nothing is written for that period', async () => {
+  const store = memoryStore();
+  const mock = providers({ tamper: (base, b) => (b.height === 3000 ? { ...b, bits: 0x207ffffe } : b) });
+  await assert.rejects(sync(store, mock), /Period 1 \(blocks 2,016–4,031\) fails from every provider: block 3,000 difficulty differs/);
+  assert.ok(store.files.has(periodFile(0)));
+  assert.ok(!store.files.has(periodFile(1)));
+  const manifest = JSON.parse(new TextDecoder().decode(store.files.get(MANIFEST)));
+  assert.equal(manifest.periods, 1);
+});
+
+test("a provider with a different block at a period's end: fails", async () => {
+  const store = memoryStore();
+  const mock = providers({ hashAtHeight: (base, h) => (base === B && h === RETARGET_INTERVAL - 1 ? 'ff'.repeat(32) : null) });
+  await assert.rejects(sync(store, mock), new RegExp(`${B} has a different block at height 2,015`));
+  assert.equal(store.files.size, 0);
+});
+
+test('one provider down: nothing is added (two must agree)', async () => {
+  const store = memoryStore();
+  const r = await sync(store, providers({ down: [B] }));
+  assert.equal(r.status, 'unavailable');
+  assert.equal(store.files.size, 0);
+});
+
+test('with a single configured provider, its answer is enough', async () => {
+  const store = memoryStore();
+  const mock = providers();
+  const r = await syncPeriods({ store, client: quickClient(mock.fetch), providers: [A], params: PARAMS });
+  assert.equal(r.periods, 3);
+});
+
+test('damaged stored data is caught before anything is added', async () => {
+  const store = memoryStore();
+  await sync(store, providers());
+
+  const bad = new Uint8Array(store.files.get(periodFile(1)));
+  bad[500] ^= 1;
+  store.files.set(periodFile(1), bad);
+  await assert.rejects(verifyStored(store, PARAMS), /Stored periods\/00001\.bin fails/);
+
+  store.files.set(periodFile(1), CHAIN.slice(PERIOD_BYTES, 2 * PERIOD_BYTES - 80));
+  await assert.rejects(verifyStored(store, PARAMS), /not 161,280 bytes/);
+
+  store.files.set(periodFile(1), CHAIN.slice(PERIOD_BYTES, 2 * PERIOD_BYTES));
+  const m = JSON.parse(new TextDecoder().decode(store.files.get(MANIFEST)));
+  store.files.set(MANIFEST, new TextEncoder().encode(JSON.stringify({ ...m, periods: 2 })));
+  await assert.rejects(verifyStored(store, PARAMS), /doesn't match the stored periods/);
+});
+
+test('fetchPeriod: pages of 10, newest first, and a gap is an error', async () => {
+  const mock = providers();
+  const client = quickClient(mock.fetch);
+  const bytes = await fetchPeriod(client, RETARGET_INTERVAL, [A]);
+  assert.deepEqual(bytes, CHAIN.subarray(PERIOD_BYTES, 2 * PERIOD_BYTES));
+  assert.equal(mock.calls[0].path, `/blocks/${2 * RETARGET_INTERVAL - 1}`);
+
+  const gap = providers({ tamper: (base, b) => (b.height === 2010 ? { ...b, height: 'x' } : b) });
+  await assert.rejects(fetchPeriod(quickClient(gap.fetch), 0, [A]), /No provider returned block 2,010/);
+});
+
+test('client: retries 5xx and 429 with back-off, not 404', async () => {
+  let n = 0;
+  const waits = [];
+  const fetch = async () => (++n < 3 ? new Response('busy', { status: n === 1 ? 503 : 429 }) : new Response(' 42 '));
+  const client = makeClient({ fetch, delayMs: 0, sleep: async ms => waits.push(ms) });
+  assert.equal(await client.text(A, '/x'), '42');
+  assert.deepEqual(waits, [1000, 2000]);
+  assert.equal(client.requests, 3);
+
+  const missing = makeClient({ fetch: async () => new Response('no', { status: 404 }), delayMs: 0, sleep: async () => {} });
+  await assert.rejects(missing.text(A, '/x'), /HTTP 404/);
+  assert.equal(missing.requests, 1);
+});
