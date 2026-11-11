@@ -39,7 +39,9 @@ daily, and can be started by hand from the Actions tab. It runs
 1. re-checks every stored period from the genesis block;
 2. fetches each new finished period 10 blocks per request from
    Blockstream and mempool.space in turn, one request at a time per
-   provider and at least 250 ms apart, with back-off on errors;
+   provider and at least a second apart. A provider that rate-limits
+   (HTTP 429) is asked less often and waited for, as long as its
+   `Retry-After` asks or with growing pauses;
 3. checks it against Bitcoin's header rules from where the stored chain
    ends. If it fails, it fetches the period from each provider alone and
    keeps a copy that passes; if none does, the run fails and nothing is
@@ -59,7 +61,7 @@ one period every two weeks.
 node tools/headers/sync-headers.mjs --dir ../header-files --max-minutes 5
 ```
 
-Options: `--max-periods N`, `--delay-ms 250`, and `--provider URL`
+Options: `--max-periods N`, `--delay-ms 1000`, and `--provider URL`
 (repeatable; any Esplora API base, such as your own node's). Exit code 0
 means up to date (or providers unavailable, with a warning), 3 that it
 stopped at a limit with more to add, and 1 that a check failed.

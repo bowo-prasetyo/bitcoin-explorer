@@ -14,7 +14,8 @@
 //   2. asks every provider for its tip and only adds periods whose last
 //      block is at least `finality` blocks below the lowest tip;
 //   3. fetches a period 10 blocks per request (Esplora /blocks/:height),
-//      taking turns between providers so each carries part of the load;
+//      taking turns between providers so each carries part of the load,
+//      at most one request a second each, slower when rate limited;
 //   4. checks it with headerchain.js from where the stored chain ends; if
 //      it fails, fetches it again from each provider alone, so one bad
 //      provider can't block the run, and names the one that failed;
@@ -124,25 +125,47 @@ function manifestBytes(periods, state, network, now) {
 // =====================================================
 
 // A polite HTTP client for Esplora providers: one request at a time per
-// provider, at least `delayMs` apart, a timeout, and retries with
-// back-off on network errors, 429 and 5xx. `fetch` and `sleep` can be
-// replaced in tests.
+// provider, at least `delayMs` apart, a timeout, and retries.
+//
+// Rate limits (HTTP 429) slow that provider down: its spacing doubles (up
+// to 30 s) and eases back by 5 % per successful request. The request waits
+// as long as Retry-After asks (up to 5 minutes), or 5, 10, 20 ... 120 s,
+// and gives up after `rateLimitRetries` of them. Network errors and 5xx
+// are retried `retries` times, after 1, 2, 4, 8 s.
+// `fetch`, `sleep` and `now` can be replaced in tests.
 export function makeClient({
   fetch = globalThis.fetch,
   sleep = ms => new Promise(r => setTimeout(r, ms)),
-  delayMs = 250,
+  now = Date.now,
+  delayMs = 1000,
   timeoutMs = 20000,
   retries = 4,
+  rateLimitRetries = 8,
   log = () => {}
 } = {}) {
+  const MAX_SPACING = 30_000;
   const nextAt = new Map();
+  const spacing = new Map();
   let requests = 0;
 
+  const spacingOf = base => spacing.get(base) ?? delayMs;
+
+  function retryAfterMs(res) {
+    const v = res.headers?.get?.('retry-after');
+    if (!v) return null;
+    const seconds = Number(v);
+    const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(v) - now();
+    return Number.isFinite(ms) && ms >= 0 ? Math.min(ms, 300_000) : null;
+  }
+
   async function get(base, path) {
-    for (let attempt = 0; ; attempt++) {
-      const wait = (nextAt.get(base) ?? 0) - Date.now();
+    let failures = 0;
+    let limited = 0;
+
+    for (;;) {
+      const wait = (nextAt.get(base) ?? 0) - now();
       if (wait > 0) await sleep(wait);
-      nextAt.set(base, Date.now() + delayMs);
+      nextAt.set(base, now() + spacingOf(base));
       requests++;
 
       let res = null;
@@ -157,15 +180,30 @@ export function makeClient({
         error = err;
       }
 
-      if (res?.ok) return res;
+      if (res?.ok) {
+        spacing.set(base, Math.max(delayMs, Math.round(spacingOf(base) * 0.95)));
+        return res;
+      }
 
-      const retryable = error || res.status === 429 || res.status >= 500;
+      if (res?.status === 429) {
+        if (++limited > rateLimitRetries) {
+          throw new Error(`${base}${path}: HTTP 429 (rate limited ${limited - 1} times in a row)`);
+        }
+        const slower = Math.min(MAX_SPACING, spacingOf(base) * 2);
+        spacing.set(base, slower);
+        const backoff = retryAfterMs(res) ?? Math.min(120_000, 5000 * 2 ** (limited - 1));
+        log(`rate limited by ${base}: waiting ${Math.round(backoff / 1000)} s, then one request every ${(slower / 1000).toFixed(1)} s`);
+        await sleep(backoff);
+        continue;
+      }
 
-      if (!retryable || attempt >= retries) {
+      const retryable = error || res.status >= 500;
+
+      if (!retryable || failures >= retries) {
         throw new Error(`${base}${path}: ${error ? error.message : `HTTP ${res.status}`}`);
       }
 
-      const backoff = 1000 * 2 ** attempt;
+      const backoff = 1000 * 2 ** failures++;
       log(`retrying ${base}${path} in ${backoff / 1000} s (${error ? error.message : `HTTP ${res.status}`})`);
       await sleep(backoff);
     }
@@ -180,7 +218,9 @@ export function makeClient({
     },
     get requests() {
       return requests;
-    }
+    },
+    // Current spacing per provider (ms), for logs and tests.
+    spacing: base => spacingOf(base)
   };
 }
 
