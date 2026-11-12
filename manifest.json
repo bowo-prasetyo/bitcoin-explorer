@@ -3,28 +3,28 @@
   "network": "mainnet",
   "headerSize": 80,
   "periodLength": 2016,
-  "periods": 85,
+  "periods": 95,
   "files": "periods/NNNNN.bin, NNNNN = period index, 5 digits",
   "tip": {
-    "height": 171359,
-    "hash": "000000000000097fb0fdbeee0cee7e8f4e1a4ef8fad49f3d549624b0d47abed0",
-    "bits": 436942092,
-    "timestamp": 1331885274,
-    "periodStartTimestamp": 1330676736,
+    "height": 191519,
+    "hash": "0000000000000791dd1cb7a684a54c72ccde51f459fff0fc3e6e051641b1e941",
+    "bits": 436796718,
+    "timestamp": 1343645636,
+    "periodStartTimestamp": 1342537166,
     "recentTimestamps": [
-      1331881447,
-      1331882076,
-      1331882166,
-      1331882473,
-      1331882587,
-      1331882707,
-      1331882903,
-      1331884295,
-      1331884604,
-      1331885360,
-      1331885274
+      1343640884,
+      1343641138,
+      1343641803,
+      1343641946,
+      1343642086,
+      1343643314,
+      1343643552,
+      1343644628,
+      1343644990,
+      1343645090,
+      1343645636
     ],
-    "work": "0xe59f35f37e5c50260"
+    "work": "0x1614402859652da9e0"
   },
-  "updated": "2026-11-12T02:16:40.866Z"
+  "updated": "2026-11-12T02:39:01.363Z"
 }
